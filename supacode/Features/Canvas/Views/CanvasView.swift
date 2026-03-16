@@ -92,10 +92,25 @@ struct CanvasView: View {
   private var canvasZoomGesture: some Gesture {
     MagnifyGesture()
       .onChanged { value in
-        canvasScale = max(0.25, min(2.0, lastCanvasScale * value.magnification))
+        let newScale = max(0.25, min(2.0, lastCanvasScale * value.magnification))
+        let anchor = value.startLocation
+
+        // Keep the canvas point under the pinch center fixed:
+        // screenPos = canvasPoint * scale + offset
+        // → canvasPoint = (anchor - lastOffset) / lastScale
+        // → newOffset  = anchor - canvasPoint * newScale
+        let canvasX = (anchor.x - lastCanvasOffset.width) / lastCanvasScale
+        let canvasY = (anchor.y - lastCanvasOffset.height) / lastCanvasScale
+
+        canvasOffset = CGSize(
+          width: anchor.x - canvasX * newScale,
+          height: anchor.y - canvasY * newScale
+        )
+        canvasScale = newScale
       }
       .onEnded { _ in
         lastCanvasScale = canvasScale
+        lastCanvasOffset = canvasOffset
       }
   }
 
