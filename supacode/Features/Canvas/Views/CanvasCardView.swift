@@ -4,7 +4,7 @@ import SwiftUI
 struct CanvasCardView: View {
   let repositoryName: String
   let worktreeName: String
-  let surfaceView: GhosttySurfaceView
+  let tree: SplitTree<GhosttySurfaceView>
   let isFocused: Bool
   let hasUnseenNotification: Bool
   let cardSize: CGSize
@@ -13,10 +13,11 @@ struct CanvasCardView: View {
   let onDragCommit: (CGSize) -> Void
   let onResize: (CardResizeEdge, CGSize) -> Void
   let onResizeEnd: () -> Void
+  let onSplitOperation: (TerminalSplitTreeView.Operation) -> Void
 
   enum CardResizeEdge {
-    case leading, trailing, bottom
-    case bottomLeading, bottomTrailing
+    case leading, trailing, top, bottom
+    case topLeading, topTrailing, bottomLeading, bottomTrailing
   }
 
   private let titleBarHeight: CGFloat = 28
@@ -83,7 +84,7 @@ struct CanvasCardView: View {
   }
 
   private var terminalContent: some View {
-    GhosttyTerminalView(surfaceView: surfaceView, pinnedSize: cardSize)
+    TerminalSplitTreeView(tree: tree, pinnedSize: cardSize, action: onSplitOperation)
       .frame(width: cardSize.width, height: cardSize.height)
       .allowsHitTesting(isFocused)
   }
@@ -114,6 +115,15 @@ struct CanvasCardView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 
       edgeHandle(
+        cursor: .frameResize(position: .top, directions: .all),
+        isVertical: false,
+        edgeOffset: CGSize(width: 0, height: -edgeThickness / 2)
+      ) { translation in
+        onResize(.top, translation)
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+      edgeHandle(
         cursor: .frameResize(position: .bottom, directions: .all),
         isVertical: false,
         edgeOffset: CGSize(width: 0, height: edgeThickness / 2)
@@ -121,6 +131,20 @@ struct CanvasCardView: View {
         onResize(.bottom, translation)
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+
+      cornerHandle(
+        cursor: .frameResize(position: .topLeft, directions: .all),
+        alignment: .topLeading
+      ) { translation in
+        onResize(.topLeading, translation)
+      }
+
+      cornerHandle(
+        cursor: .frameResize(position: .topRight, directions: .all),
+        alignment: .topTrailing
+      ) { translation in
+        onResize(.topTrailing, translation)
+      }
 
       cornerHandle(
         cursor: .frameResize(position: .bottomLeft, directions: .all),
@@ -181,8 +205,8 @@ struct CanvasCardView: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
     .offset(
-      x: alignment == .bottomTrailing ? cornerSide / 3 : -cornerSide / 3,
-      y: cornerSide / 3
+      x: (alignment == .bottomTrailing || alignment == .topTrailing) ? cornerSide / 3 : -cornerSide / 3,
+      y: (alignment == .topLeading || alignment == .topTrailing) ? -cornerSide / 3 : cornerSide / 3
     )
   }
 }
