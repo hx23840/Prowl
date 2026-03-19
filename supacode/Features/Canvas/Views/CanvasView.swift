@@ -95,6 +95,7 @@ struct CanvasView: View {
         viewportSize = newSize
         if !hasPerformedInitialFit {
           hasPerformedInitialFit = true
+          arrangeCards()
           fitToView(canvasSize: newSize)
         }
       }
