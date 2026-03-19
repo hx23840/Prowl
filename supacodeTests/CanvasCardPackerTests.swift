@@ -97,6 +97,29 @@ struct CanvasCardPackerTests {
     #expect(short2Bottom <= tallBottom + 1, "short2 should fill gap beside tall card")
   }
 
+  // MARK: - Mixed widths (row-break strategy)
+
+  @Test func wideAndNarrowCardsUseRowBreak() throws {
+    // 1 wide + 2 narrow cards with enough total width that single-row is
+    // too wide. Row-break [wide][n1+n2] gives best scale (0.000822) by
+    // using the narrow cards' actual width instead of max-width columns.
+    let cards = [
+      card("wide", width: 1000, height: 550),
+      card("narrow1", width: 600, height: 550),
+      card("narrow2", width: 600, height: 550),
+    ]
+    let result = packer.pack(cards: cards, targetRatio: 16.0 / 9.0)
+
+    let narrow1 = try #require(result.layouts["narrow1"])
+    let narrow2 = try #require(result.layouts["narrow2"])
+
+    // Row-break should place narrow cards side by side on their own row.
+    #expect(narrow1.position.y == narrow2.position.y)
+    #expect(narrow1.position.x != narrow2.position.x)
+    // Bounding width should use actual card widths, not max-width columns.
+    #expect(result.boundingSize.width < 1500)
+  }
+
   // MARK: - No overlap
 
   @Test func cardsDoNotOverlap() {
@@ -108,14 +131,11 @@ struct CanvasCardPackerTests {
     ]
     let result = packer.pack(cards: cards, targetRatio: 1.5)
 
-    // Use column width (max card width = 800) for overlap check since
-    // waterfall uses equal-width columns.
-    let colWidth: CGFloat = 800
     let rects = result.layouts.map { (_, layout) -> CGRect in
       CGRect(
-        x: layout.position.x - colWidth / 2,
+        x: layout.position.x - layout.size.width / 2,
         y: layout.position.y - (layout.size.height + 28) / 2,
-        width: colWidth,
+        width: layout.size.width,
         height: layout.size.height + 28
       )
     }

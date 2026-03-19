@@ -49,39 +49,77 @@ struct CanvasCardPacker {
     var boundingSize: CGSize
   }
 
-  /// Pack cards using a waterfall (masonry) layout that maximizes the
-  /// fitToView scale — i.e., cards appear as large as possible on screen.
+  /// The maximum card count for exhaustive row-break enumeration.
+  private static let exhaustiveLimit = 20
+
+  /// Pack cards to maximize the fitToView scale — cards appear as large as
+  /// possible on screen.
   ///
-  /// `targetRatio` is the viewport's width/height. The algorithm tries every
-  /// possible column count (1…N) and picks the one whose bounding box gives
-  /// the highest `min(viewportW / boundingW, viewportH / boundingH)`.
+  /// Two strategies compete: **waterfall** (equal-width columns, cards drop
+  /// into the shortest column — great for varying heights) and **row-break**
+  /// (cards flow left-to-right with centered rows — great for varying widths).
+  /// The configuration with the highest `min(vW/bW, vH/bH)` wins.
   func pack(cards: [CardInfo], targetRatio: CGFloat) -> PackResult {
     guard !cards.isEmpty, targetRatio > 0 else {
       return PackResult(layouts: [:], boundingSize: .zero)
     }
 
     let columnWidth = cards.map(\.size.width).max()!
-    var bestResult: PackResult?
     var bestScale: CGFloat = -1
     var bestArea = CGFloat.infinity
+    // Positive = waterfall column count, negative = row-break mask (offset by -1).
+    var bestTag = 1
 
+    // Strategy 1: Waterfall — try all column counts.
     for cols in 1...cards.count {
-      let result = waterfallPack(cards: cards, columns: cols, columnWidth: columnWidth)
-      let bW = result.boundingSize.width
-      let bH = result.boundingSize.height
-      let scale = min(targetRatio / bW, 1.0 / bH)
-      let area = bW * bH
+      let (w, h) = waterfallBoundingSize(cards: cards, columns: cols, columnWidth: columnWidth)
+      let scale = min(targetRatio / w, 1.0 / h)
+      let area = w * h
       if scale > bestScale || (scale == bestScale && area < bestArea) {
         bestScale = scale
-        bestResult = result
         bestArea = area
+        bestTag = cols
       }
     }
 
-    return bestResult ?? PackResult(layouts: [:], boundingSize: .zero)
+    // Strategy 2: Row-break — try all row configurations (exhaustive for small N).
+    if cards.count <= Self.exhaustiveLimit {
+      for mask in 0..<(1 << (cards.count - 1)) {
+        let (w, h) = rowBreakBoundingSize(cards: cards, breakMask: mask)
+        let scale = min(targetRatio / w, 1.0 / h)
+        let area = w * h
+        if scale > bestScale || (scale == bestScale && area < bestArea) {
+          bestScale = scale
+          bestArea = area
+          bestTag = -(mask + 1)
+        }
+      }
+    }
+
+    if bestTag > 0 {
+      return waterfallPack(cards: cards, columns: bestTag, columnWidth: columnWidth)
+    } else {
+      return rowBreakLayout(cards: cards, breakMask: -(bestTag + 1))
+    }
   }
 
   // MARK: - Waterfall layout
+
+  /// Compute bounding size for a waterfall layout without building layouts.
+  private func waterfallBoundingSize(
+    cards: [CardInfo],
+    columns: Int,
+    columnWidth: CGFloat
+  ) -> (CGFloat, CGFloat) {
+    var colHeights = Array(repeating: spacing, count: columns)
+    for card in cards {
+      let col = colHeights.enumerated().min(by: { $0.element < $1.element })!.offset
+      colHeights[col] += card.size.height + titleBarHeight + spacing
+    }
+    let totalWidth = spacing + CGFloat(columns) * (columnWidth + spacing)
+    let totalHeight = colHeights.max() ?? spacing
+    return (totalWidth, totalHeight)
+  }
 
   /// Place cards into equal-width columns, each card going to the shortest
   /// column. Cards are horizontally centered within their column.
@@ -115,6 +153,77 @@ struct CanvasCardPacker {
     return PackResult(
       layouts: layouts,
       boundingSize: CGSize(width: totalWidth, height: totalHeight)
+    )
+  }
+
+  // MARK: - Row-break layout
+
+  /// Compute bounding size for a row-break configuration without allocating.
+  private func rowBreakBoundingSize(cards: [CardInfo], breakMask: Int) -> (CGFloat, CGFloat) {
+    var maxWidth = spacing
+    var totalHeight = spacing
+    var rowWidth = spacing
+    var rowHeight: CGFloat = 0
+
+    for i in 0..<cards.count {
+      if i > 0 && (breakMask & (1 << (i - 1))) != 0 {
+        maxWidth = max(maxWidth, rowWidth)
+        totalHeight += rowHeight + spacing
+        rowWidth = spacing
+        rowHeight = 0
+      }
+      rowWidth += cards[i].size.width + spacing
+      rowHeight = max(rowHeight, cards[i].size.height + titleBarHeight)
+    }
+
+    maxWidth = max(maxWidth, rowWidth)
+    totalHeight += rowHeight + spacing
+    return (maxWidth, totalHeight)
+  }
+
+  /// Build card layouts from a row-break mask. Rows are centered horizontally.
+  private func rowBreakLayout(cards: [CardInfo], breakMask: Int) -> PackResult {
+    var rows: [[Int]] = [[0]]
+    for i in 1..<cards.count {
+      if breakMask & (1 << (i - 1)) != 0 {
+        rows.append([i])
+      } else {
+        rows[rows.count - 1].append(i)
+      }
+    }
+
+    let rowWidths = rows.map { row -> CGFloat in
+      row.reduce(spacing) { $0 + cards[$1].size.width + spacing }
+    }
+    let maxRowWidth = rowWidths.max() ?? 0
+
+    var layouts: [String: CanvasCardLayout] = [:]
+    var y = spacing
+
+    for (rowIndex, row) in rows.enumerated() {
+      let rowHeight = row.map { cards[$0].size.height + titleBarHeight }.max() ?? 0
+      let xOffset = (maxRowWidth - rowWidths[rowIndex]) / 2
+      var x = spacing + xOffset
+
+      for idx in row {
+        let card = cards[idx]
+        let cardHeight = card.size.height + titleBarHeight
+        layouts[card.key] = CanvasCardLayout(
+          position: CGPoint(
+            x: x + card.size.width / 2,
+            y: y + cardHeight / 2
+          ),
+          size: card.size
+        )
+        x += card.size.width + spacing
+      }
+
+      y += rowHeight + spacing
+    }
+
+    return PackResult(
+      layouts: layouts,
+      boundingSize: CGSize(width: maxRowWidth, height: y)
     )
   }
 }
