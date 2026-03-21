@@ -589,8 +589,15 @@ private func pullRequestDelegateAction(
   }
 }
 
+/// Ghostty actions that Prowl handles natively and should not appear as
+/// duplicates from the Ghostty command palette entries.
+private let filteredGhosttyActions: Set<String> = [
+  "check_for_updates",
+]
+
 private func ghosttyCommandItems(_ commands: [GhosttyCommand]) -> [CommandPaletteItem] {
-  commands.map { command in
+  commands.compactMap { command in
+    guard !filteredGhosttyActions.contains(command.action) else { return nil }
     let subtitle = command.description.trimmingCharacters(in: .whitespacesAndNewlines)
     return CommandPaletteItem(
       id: CommandPaletteItemID.ghosttyCommand(command),
