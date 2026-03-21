@@ -17,6 +17,7 @@ final class GhosttySurfaceBridge {
   var onCommandPaletteToggle: (() -> Bool)?
   var onProgressReport: ((ghostty_action_progress_report_state_e) -> Void)?
   var onDesktopNotification: ((String, String) -> Void)?
+  var onPromptTitle: ((ghostty_action_prompt_title_e) -> Void)?
   private var progressResetTask: Task<Void, Never>?
 
   deinit {
@@ -175,7 +176,7 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_PROMPT_TITLE:
-      state.promptTitle = action.action.prompt_title
+      onPromptTitle?(action.action.prompt_title)
       return true
 
     case GHOSTTY_ACTION_PWD:
@@ -422,7 +423,7 @@ final class GhosttySurfaceBridge {
       return true
 
     case GHOSTTY_ACTION_OPEN_CONFIG:
-      state.openConfigCount += 1
+      // Handled at app level in GhosttyRuntime.handleAction.
       return true
 
     case GHOSTTY_ACTION_PRESENT_TERMINAL:

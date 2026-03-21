@@ -656,6 +656,10 @@ final class WorktreeTerminalState {
       guard let self, let view else { return }
       self.handleCloseRequest(for: view, processAlive: processAlive)
     }
+    view.bridge.onPromptTitle = { [weak self] promptType in
+      guard let self else { return }
+      self.handlePromptTitle(promptType, tabId: tabId)
+    }
     view.onFocusChange = { [weak self, weak view] focused in
       guard let self, let view, focused else { return }
       self.focusedSurfaceIdByTab[tabId] = view.id
@@ -699,6 +703,55 @@ final class WorktreeTerminalState {
   private func currentFocusedSurfaceId() -> UUID? {
     guard let selectedTabId = tabManager.selectedTabId else { return nil }
     return focusedSurfaceIdByTab[selectedTabId]
+  }
+
+  private func handlePromptTitle(
+    _ promptType: ghostty_action_prompt_title_e,
+    tabId: TerminalTabID
+  ) {
+    guard let surfaceId = focusedSurfaceIdByTab[tabId],
+      let window = surfaces[surfaceId]?.window
+    else { return }
+    switch promptType {
+    case GHOSTTY_PROMPT_TITLE_SURFACE, GHOSTTY_PROMPT_TITLE_TAB:
+      // Prowl is a single-window app so there is no per-surface window title to set.
+      // Both surface and tab title prompts are treated as tab title changes for now.
+      // Consider removing GHOSTTY_PROMPT_TITLE_SURFACE support entirely.
+      promptTabTitle(for: tabId, in: window)
+    default:
+      break
+    }
+  }
+
+  private func promptTabTitle(for tabId: TerminalTabID, in window: NSWindow) {
+    guard let tabIndex = tabManager.tabs.firstIndex(where: { $0.id == tabId }) else { return }
+
+    let alert = NSAlert()
+    alert.messageText = "Change Tab Title"
+    alert.informativeText = "Leave blank to restore the default."
+    alert.alertStyle = .informational
+
+    let textField = NSTextField(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
+    textField.stringValue = tabManager.tabs[tabIndex].title
+    alert.accessoryView = textField
+
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    alert.window.initialFirstResponder = textField
+
+    alert.beginSheetModal(for: window) { [weak self] response in
+      MainActor.assumeIsolated {
+        guard response == .alertFirstButtonReturn else { return }
+        guard let self else { return }
+        let newTitle = textField.stringValue
+        if newTitle.isEmpty {
+          self.tabManager.clearTitleOverride(tabId)
+          self.updateTabTitle(for: tabId)
+        } else {
+          self.tabManager.overrideTitle(tabId, title: newTitle)
+        }
+      }
+    }
   }
 
   private func updateTabTitle(for tabId: TerminalTabID) {
