@@ -168,7 +168,8 @@ struct CanvasView: View {
     let positionedCount = cardKeys.count - unpositioned.count
     // For incremental adds, preserve the existing grid shape.
     // For initial layout, use total count for a balanced grid.
-    let columns = positionedCount > 0
+    let columns =
+      positionedCount > 0
       ? gridColumns(for: positionedCount)
       : gridColumns(for: cardKeys.count)
 
@@ -293,8 +294,10 @@ struct CanvasView: View {
     guard !keys.isEmpty else { return }
 
     // Bounding box of all cards in canvas coordinates
-    var minX = CGFloat.infinity, minY = CGFloat.infinity
-    var maxX = -CGFloat.infinity, maxY = -CGFloat.infinity
+    var minX = CGFloat.infinity
+    var minY = CGFloat.infinity
+    var maxX = -CGFloat.infinity
+    var maxY = -CGFloat.infinity
 
     for key in keys {
       guard let layout = layoutStore.cardLayouts[key] else { continue }

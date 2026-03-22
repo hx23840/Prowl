@@ -99,14 +99,16 @@ extension RepositoryPersistenceClient: DependencyKey {
           let payload = try await MainActor.run {
             try decoder.decode(RepositorySnapshotCachePayload.self, from: data)
           }
-          guard let repositories = await MainActor.run(
-            resultType: [Repository]?.self,
-            body: {
-            payload.restoreRepositories(
-              pathExists: { FileManager.default.fileExists(atPath: $0) }
+          guard
+            let repositories = await MainActor.run(
+              resultType: [Repository]?.self,
+              body: {
+                payload.restoreRepositories(
+                  pathExists: { FileManager.default.fileExists(atPath: $0) }
+                )
+              }
             )
-            }
-          ) else {
+          else {
             discardRepositorySnapshot(at: snapshotURL)
             return nil
           }
@@ -243,10 +245,12 @@ extension RepositorySnapshotCachePayload {
       restoredWorktrees.reserveCapacity(worktrees.count)
 
       for worktree in worktrees {
-        guard let restoredWorktree = worktree.restore(
-          repositoryRootURL: rootURL,
-          pathExists: pathExists
-        ) else {
+        guard
+          let restoredWorktree = worktree.restore(
+            repositoryRootURL: rootURL,
+            pathExists: pathExists
+          )
+        else {
           return nil
         }
         restoredWorktrees.append(restoredWorktree)
