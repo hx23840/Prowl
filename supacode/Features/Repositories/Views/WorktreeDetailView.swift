@@ -92,6 +92,12 @@ struct WorktreeDetailView: View {
           },
           onSelectNotification: selectToolbarNotification,
           onDismissAllNotifications: { dismissAllToolbarNotifications(in: notificationGroups) },
+          onShowGitLog: {
+            GitLogWindowManager.shared.show(
+              worktreeURL: selectedWorktree.workingDirectory,
+              branchName: selectedWorktree.name,
+            )
+          },
           onRunScript: { store.send(.runScript) },
           onStopRunScript: { store.send(.stopRunScript) },
           onRunCustomCommand: { index in
@@ -284,6 +290,7 @@ struct WorktreeDetailView: View {
     let onCopyPath: () -> Void
     let onSelectNotification: (Worktree.ID, WorktreeTerminalNotification) -> Void
     let onDismissAllNotifications: () -> Void
+    let onShowGitLog: () -> Void
     let onRunScript: () -> Void
     let onStopRunScript: () -> Void
     let onRunCustomCommand: (Int) -> Void
@@ -382,6 +389,12 @@ struct WorktreeDetailView: View {
 
     @ToolbarContentBuilder
     private var commandToolbarItems: some ToolbarContent {
+      ToolbarItem {
+        GitLogToolbarButton(
+          shortcut: AppShortcuts.showGitLog.display,
+          action: onShowGitLog
+        )
+      }
       if toolbarState.runScriptIsRunning || toolbarState.runScriptEnabled {
         ToolbarItem {
           RunScriptToolbarButton(
@@ -600,6 +613,31 @@ private struct RunScriptToolbarButton: View {
   }
 }
 
+private struct GitLogToolbarButton: View {
+  let shortcut: String
+  let action: () -> Void
+  @Environment(CommandKeyObserver.self) private var commandKeyObserver
+
+  var body: some View {
+    Button {
+      action()
+    } label: {
+      HStack(spacing: 6) {
+        Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+          .accessibilityHidden(true)
+        Text("Log")
+        if commandKeyObserver.isPressed {
+          Text(shortcut)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+      }
+    }
+    .font(.caption)
+    .help("Git Log (\(shortcut))")
+  }
+}
+
 private struct OnevcatCustomCommandToolbarButton: View {
   let title: String
   let systemImage: String
@@ -682,6 +720,7 @@ private struct WorktreeToolbarPreview: View {
         onCopyPath: {},
         onSelectNotification: { _, _ in },
         onDismissAllNotifications: {},
+        onShowGitLog: {},
         onRunScript: {},
         onStopRunScript: {},
         onRunCustomCommand: { _ in }
