@@ -160,15 +160,21 @@ final class GitLogWindowState {
     worktreeURL: URL
   ) async -> DiffDocument {
     let gitClient = GitClient()
+    let filePath = file.displayPath
+    if let patch = await gitClient.commitFilePatch(
+      commit: commit, filePath: filePath, at: worktreeURL
+    ), !patch.isEmpty {
+      return DiffDocument(patch: patch, title: file.displayName)
+    }
+    // Fallback for edge cases (e.g. initial commit with no parent)
     let oldContents: String
     let newContents: String
-
     switch file.status {
     case .added:
       oldContents = ""
       newContents =
         await gitClient.showFileAtCommit(
-          file.displayPath, commit: commit, in: worktreeURL
+          filePath, commit: commit, in: worktreeURL
         ) ?? ""
     case .deleted:
       oldContents =
@@ -176,27 +182,16 @@ final class GitLogWindowState {
           file.oldPath ?? "", commit: "\(commit)~1", in: worktreeURL
         ) ?? ""
       newContents = ""
-    case .renamed:
-      oldContents =
-        await gitClient.showFileAtCommit(
-          file.oldPath ?? "", commit: "\(commit)~1", in: worktreeURL
-        ) ?? ""
-      newContents =
-        await gitClient.showFileAtCommit(
-          file.newPath ?? "", commit: commit, in: worktreeURL
-        ) ?? ""
     default:
-      let path = file.displayPath
       oldContents =
         await gitClient.showFileAtCommit(
-          path, commit: "\(commit)~1", in: worktreeURL
+          file.oldPath ?? filePath, commit: "\(commit)~1", in: worktreeURL
         ) ?? ""
       newContents =
         await gitClient.showFileAtCommit(
-          path, commit: commit, in: worktreeURL
+          file.newPath ?? filePath, commit: commit, in: worktreeURL
         ) ?? ""
     }
-
     let diffFile = DiffFile(
       oldPath: file.oldPath,
       newPath: file.newPath,

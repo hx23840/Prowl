@@ -25,6 +25,7 @@ enum GitOperation: String {
   case commitLog = "commit_log"
   case commitShow = "commit_show"
   case commitDiffNameStatus = "commit_diff_name_status"
+  case commitFilePatch = "commit_file_patch"
 }
 
 enum GitClientError: LocalizedError {
@@ -584,6 +585,26 @@ struct GitClient {
       )
     } catch {
       return ""
+    }
+  }
+
+  nonisolated func commitFilePatch(
+    commit: String,
+    filePath: String,
+    at worktreeURL: URL
+  ) async -> String? {
+    let path = worktreeURL.path(percentEncoded: false)
+    do {
+      return try await runGit(
+        operation: .commitFilePatch,
+        arguments: [
+          "-C", path,
+          "diff-tree", "-p", "-m", "--first-parent",
+          commit, "--", filePath,
+        ]
+      )
+    } catch {
+      return nil
     }
   }
 
