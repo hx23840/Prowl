@@ -4,7 +4,7 @@ import SwiftUI
 struct CanvasCardView: View {
   let repositoryName: String
   let worktreeName: String
-  let tree: SplitTree<GhosttySurfaceView>
+  let tree: SplitTree<SurfaceView>
   let isFocused: Bool
   let hasUnseenNotification: Bool
   let cardSize: CGSize

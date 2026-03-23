@@ -18,8 +18,8 @@ final class WorktreeTerminalState {
   private let worktree: Worktree
   @ObservationIgnored
   @SharedReader private var repositorySettings: RepositorySettings
-  private var trees: [TerminalTabID: SplitTree<GhosttySurfaceView>] = [:]
-  private var surfaces: [UUID: GhosttySurfaceView] = [:]
+  private var trees: [TerminalTabID: SplitTree<SurfaceView>] = [:]
+  private var surfaces: [UUID: SurfaceView] = [:]
   private var focusedSurfaceIdByTab: [TerminalTabID: UUID] = [:]
   var tabIsRunningById: [TerminalTabID: Bool] = [:]
   private var runScriptTabId: TerminalTabID?
@@ -66,7 +66,7 @@ final class WorktreeTerminalState {
   var worktreeName: String { worktree.name }
   var repositoryRootURL: URL { worktree.repositoryRootURL }
 
-  var activeSurfaceView: GhosttySurfaceView? {
+  var activeSurfaceView: SurfaceView? {
     guard let selectedTabId = tabManager.selectedTabId,
       let surfaceId = focusedSurfaceIdByTab[selectedTabId]
     else {
@@ -75,7 +75,7 @@ final class WorktreeTerminalState {
     return surfaces[surfaceId]
   }
 
-  func surfaceView(for tabId: TerminalTabID) -> GhosttySurfaceView? {
+  func surfaceView(for tabId: TerminalTabID) -> SurfaceView? {
     guard let surfaceId = focusedSurfaceIdByTab[tabId] else { return nil }
     return surfaces[surfaceId]
   }
@@ -228,10 +228,10 @@ final class WorktreeTerminalState {
   func focusAndInsertText(_ text: String) -> Bool {
     guard let tabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[tabId],
-      let surface = surfaces[focusedId]
+      let terminal = surfaces[focusedId]?.terminalView
     else { return false }
-    surface.requestFocus()
-    surface.insertText(text, replacementRange: NSRange(location: 0, length: 0))
+    terminal.requestFocus()
+    terminal.insertText(text, replacementRange: NSRange(location: 0, length: 0))
     return true
   }
 
@@ -239,14 +239,14 @@ final class WorktreeTerminalState {
   func focusAndRunCommand(_ text: String) -> Bool {
     guard let tabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[tabId],
-      let surface = surfaces[focusedId]
+      let terminal = surfaces[focusedId]?.terminalView
     else { return false }
     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return false }
     let command = text.trimmingCharacters(in: .newlines)
-    surface.requestFocus()
-    surface.insertText(command, replacementRange: NSRange(location: 0, length: 0))
-    return surface.submitLine()
+    terminal.requestFocus()
+    terminal.insertText(command, replacementRange: NSRange(location: 0, length: 0))
+    return terminal.submitLine()
   }
 
   func syncFocus(windowIsKey: Bool, windowIsVisible: Bool) {
@@ -263,15 +263,22 @@ final class WorktreeTerminalState {
           focusedSurfaceID: focusedId,
           surfaceID: surface.id
         )
-        surface.setOcclusion(activity.isVisible)
-        surface.focusDidChange(activity.isFocused)
-        if activity.isFocused {
-          surfaceToFocus = surface
+        if let terminal = surface.terminalView {
+          terminal.setOcclusion(activity.isVisible)
+          terminal.focusDidChange(activity.isFocused)
+          if activity.isFocused {
+            surfaceToFocus = terminal
+          }
         }
       }
     }
-    if let surfaceToFocus, surfaceToFocus.window?.firstResponder is GhosttySurfaceView {
-      surfaceToFocus.window?.makeFirstResponder(surfaceToFocus)
+    // Only force-focus the terminal if the current first responder is also a terminal.
+    // Don't steal focus from browser panes (BrowserWebView).
+    if let surfaceToFocus {
+      let firstResponder = surfaceToFocus.window?.firstResponder
+      if firstResponder is GhosttySurfaceView || firstResponder == nil {
+        surfaceToFocus.window?.makeFirstResponder(surfaceToFocus)
+      }
     }
   }
 
@@ -310,11 +317,11 @@ final class WorktreeTerminalState {
   func closeFocusedSurface() -> Bool {
     guard let tabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[tabId],
-      let surface = surfaces[focusedId]
+      let terminal = surfaces[focusedId]?.terminalView
     else {
       return false
     }
-    surface.performBindingAction("close_surface")
+    terminal.performBindingAction("close_surface")
     return true
   }
 
@@ -322,11 +329,11 @@ final class WorktreeTerminalState {
   func performBindingActionOnFocusedSurface(_ action: String) -> Bool {
     guard let tabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[tabId],
-      let surface = surfaces[focusedId]
+      let terminal = surfaces[focusedId]?.terminalView
     else {
       return false
     }
-    surface.performBindingAction(action)
+    terminal.performBindingAction(action)
     return true
   }
 
@@ -334,11 +341,11 @@ final class WorktreeTerminalState {
   func navigateSearchOnFocusedSurface(_ direction: GhosttySearchDirection) -> Bool {
     guard let tabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[tabId],
-      let surface = surfaces[focusedId]
+      let terminal = surfaces[focusedId]?.terminalView
     else {
       return false
     }
-    surface.navigateSearch(direction)
+    terminal.navigateSearch(direction)
     return true
   }
 
@@ -385,7 +392,7 @@ final class WorktreeTerminalState {
     inheritingFromSurfaceId: UUID? = nil,
     initialInput: String? = nil,
     context: ghostty_surface_context_e = GHOSTTY_SURFACE_CONTEXT_TAB
-  ) -> SplitTree<GhosttySurfaceView> {
+  ) -> SplitTree<SurfaceView> {
     if let existing = trees[tabId] {
       return existing
     }
@@ -426,7 +433,7 @@ final class WorktreeTerminalState {
         focusSurface(newSurface, in: tabId)
         return true
       } catch {
-        newSurface.closeSurface()
+        newSurface.terminalView?.closeSurface()
         surfaces.removeValue(forKey: newSurface.id)
         return false
       }
@@ -509,14 +516,14 @@ final class WorktreeTerminalState {
 
   func setAllSurfacesOccluded() {
     for surface in surfaces.values {
-      surface.setOcclusion(false)
-      surface.focusDidChange(false)
+      surface.terminalView?.setOcclusion(false)
+      surface.terminalView?.focusDidChange(false)
     }
   }
 
   func closeAllSurfaces() {
     for surface in surfaces.values {
-      surface.closeSurface()
+      surface.terminalView?.closeSurface()
     }
     surfaces.removeAll()
     trees.removeAll()
@@ -620,7 +627,7 @@ final class WorktreeTerminalState {
     initialInput: String?,
     inheritingFromSurfaceId: UUID?,
     context: ghostty_surface_context_e
-  ) -> GhosttySurfaceView {
+  ) -> SurfaceView {
     let inherited = inheritedSurfaceConfig(fromSurfaceId: inheritingFromSurfaceId, context: context)
     let view = GhosttySurfaceView(
       runtime: runtime,
@@ -673,6 +680,10 @@ final class WorktreeTerminalState {
       guard let self, let view else { return }
       self.handleCloseRequest(for: view, processAlive: processAlive)
     }
+    view.bridge.onOpenUrl = { [weak self, weak view] urlString in
+      guard let self, let view, let url = URL(string: urlString) else { return }
+      self.openBrowserPane(url: url, for: view.id)
+    }
     view.bridge.onPromptTitle = { [weak self] promptType in
       guard let self else { return }
       self.handlePromptTitle(promptType, tabId: tabId)
@@ -690,8 +701,125 @@ final class WorktreeTerminalState {
       self.recordKeyInput(forSurfaceID: view.id)
       self.markNotificationsRead(forSurfaceID: view.id)
     }
-    surfaces[view.id] = view
-    return view
+    let surfaceView = SurfaceView(terminal: view)
+    surfaces[surfaceView.id] = surfaceView
+    return surfaceView
+  }
+
+  // MARK: - Browser Pane
+
+  func openBrowserPane(url: URL, for surfaceId: UUID) {
+    guard let tabId = tabId(containing: surfaceId),
+      let tree = trees[tabId],
+      let targetSurface = surfaces[surfaceId]
+    else { return }
+    let browser = BrowserSurfaceView()
+    // Route Cmd-shortcuts through app handling (Cmd+D, Cmd+W, Cmd+T)
+    browser.webView.onKeyEquivalent = { [weak self] event in
+      guard let self else { return false }
+      return self.handleBrowserKeyEquivalent(event)
+    }
+    // Track focus: when the webview becomes first responder, update focusedSurfaceIdByTab
+    browser.webView.onFocusChange = { [weak self, weak browser] focused in
+      guard let self, let browser, focused else { return }
+      if let entry = self.surfaces.first(where: { $0.value.browserView === browser }),
+        let tabId = self.tabId(containing: entry.key)
+      {
+        self.focusedSurfaceIdByTab[tabId] = entry.key
+        self.emitFocusChangedIfNeeded(entry.key)
+      }
+    }
+    browser.loadURL(url)
+    let surfaceView = SurfaceView(browser: browser)
+    surfaces[surfaceView.id] = surfaceView
+    do {
+      let newTree = try tree.inserting(
+        view: surfaceView,
+        at: targetSurface,
+        direction: .right
+      )
+      trees[tabId] = newTree
+    } catch {
+      surfaces.removeValue(forKey: surfaceView.id)
+    }
+  }
+
+  /// Creates a new terminal split next to the currently focused surface (even if it's a browser).
+  func createTerminalSplitNextToFocused(direction: SplitTree<SurfaceView>.NewDirection = .right) {
+    guard let selectedTabId = tabManager.selectedTabId,
+      let focusedId = focusedSurfaceIdByTab[selectedTabId],
+      var tree = trees[selectedTabId],
+      let targetSurface = surfaces[focusedId]
+    else { return }
+    let newSurface = createSurface(
+      tabId: selectedTabId,
+      initialInput: nil,
+      inheritingFromSurfaceId: nil,
+      context: GHOSTTY_SURFACE_CONTEXT_SPLIT
+    )
+    do {
+      let newTree = try tree.inserting(view: newSurface, at: targetSurface, direction: direction)
+      trees[selectedTabId] = newTree
+      focusSurface(newSurface, in: selectedTabId)
+    } catch {
+      newSurface.terminalView?.closeSurface()
+      surfaces.removeValue(forKey: newSurface.id)
+    }
+  }
+
+  private func handleBrowserKeyEquivalent(_ event: NSEvent) -> Bool {
+    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    guard let chars = event.charactersIgnoringModifiers else { return false }
+
+    // Cmd+D → new terminal split right
+    if flags == .command, chars == "d" {
+      createTerminalSplitNextToFocused(direction: .right)
+      return true
+    }
+    // Cmd+Shift+D → new terminal split down
+    if flags == [.command, .shift], chars == "d" {
+      createTerminalSplitNextToFocused(direction: .down)
+      return true
+    }
+    // Cmd+T → new tab
+    if flags == .command, chars == "t" {
+      _ = createTab()
+      return true
+    }
+    // Cmd+W → close this browser pane
+    if flags == .command, chars == "w" {
+      closeFocusedPane()
+      return true
+    }
+    return false
+  }
+
+  /// Closes the currently focused pane (terminal or browser).
+  func closeFocusedPane() {
+    guard let selectedTabId = tabManager.selectedTabId,
+      let focusedId = focusedSurfaceIdByTab[selectedTabId]
+    else { return }
+    let surface = surfaces[focusedId]
+    if surface?.terminalView != nil {
+      _ = performBindingActionOnFocusedSurface("close_surface")
+    } else if surface?.browserView != nil {
+      removeSurface(id: focusedId, tabId: selectedTabId)
+    }
+  }
+
+  private func removeSurface(id: UUID, tabId: TerminalTabID) {
+    guard var tree = trees[tabId],
+      let node = tree.find(id: id)
+    else { return }
+    let nextFocus = tree.focusTargetAfterClosing(node)
+    tree = tree.removing(node)
+    trees[tabId] = tree
+    surfaces.removeValue(forKey: id)
+    if let nextFocus {
+      focusSurface(nextFocus, in: tabId)
+    } else {
+      closeTab(tabId)
+    }
   }
 
   private struct InheritedSurfaceConfig: Equatable {
@@ -705,7 +833,7 @@ final class WorktreeTerminalState {
   ) -> InheritedSurfaceConfig {
     guard let surfaceId,
       let view = surfaces[surfaceId],
-      let sourceSurface = view.surface
+      let sourceSurface = view.terminalView?.surface
     else {
       return InheritedSurfaceConfig(workingDirectory: nil, fontSize: nil)
     }
@@ -779,7 +907,7 @@ final class WorktreeTerminalState {
   private func updateTabTitle(for tabId: TerminalTabID) {
     guard let focusedId = focusedSurfaceIdByTab[tabId],
       let surface = surfaces[focusedId],
-      let title = surface.bridge.state.title
+      let title = surface.terminalView?.bridge.state.title
     else { return }
     tabManager.updateTitle(tabId, title: title)
   }
@@ -795,14 +923,19 @@ final class WorktreeTerminalState {
     }
   }
 
-  private func focusSurface(_ surface: GhosttySurfaceView, in tabId: TerminalTabID) {
+  private func focusSurface(_ surface: SurfaceView, in tabId: TerminalTabID) {
     let previousSurface = focusedSurfaceIdByTab[tabId].flatMap { surfaces[$0] }
     focusedSurfaceIdByTab[tabId] = surface.id
     markNotificationsRead(forSurfaceID: surface.id)
     updateTabTitle(for: tabId)
     guard tabId == tabManager.selectedTabId else { return }
-    let fromSurface = (previousSurface === surface) ? nil : previousSurface
-    GhosttySurfaceView.moveFocus(to: surface, from: fromSurface)
+    switch surface.content {
+    case .terminal(let terminal):
+      let fromTerminal = (previousSurface === surface) ? nil : previousSurface?.terminalView
+      GhosttySurfaceView.moveFocus(to: terminal, from: fromTerminal)
+    case .browser(let browser):
+      browser.webView.window?.makeFirstResponder(browser.webView)
+    }
     emitFocusChangedIfNeeded(surface.id)
   }
 
@@ -875,7 +1008,7 @@ final class WorktreeTerminalState {
   private func removeTree(for tabId: TerminalTabID) {
     guard let tree = trees.removeValue(forKey: tabId) else { return }
     for surface in tree.leaves() {
-      surface.closeSurface()
+      surface.terminalView?.closeSurface()
       surfaces.removeValue(forKey: surface.id)
     }
     focusedSurfaceIdByTab.removeValue(forKey: tabId)
@@ -899,7 +1032,8 @@ final class WorktreeTerminalState {
   private func updateRunningState(for tabId: TerminalTabID) {
     guard let tree = trees[tabId] else { return }
     let isRunningNow = tree.leaves().contains { surface in
-      isRunningProgressState(surface.bridge.state.progressState)
+      guard let terminal = surface.terminalView else { return false }
+      return isRunningProgressState(terminal.bridge.state.progressState)
     }
     tabIsRunningById[tabId] = isRunningNow
     tabManager.updateDirty(tabId, isDirty: isRunningNow)
@@ -939,7 +1073,7 @@ final class WorktreeTerminalState {
   }
 
   private func mapSplitDirection(_ direction: GhosttySplitAction.NewDirection)
-    -> SplitTree<GhosttySurfaceView>.NewDirection
+    -> SplitTree<SurfaceView>.NewDirection
   {
     switch direction {
     case .left:
@@ -954,7 +1088,7 @@ final class WorktreeTerminalState {
   }
 
   private func mapFocusDirection(_ direction: GhosttySplitAction.FocusDirection)
-    -> SplitTree<GhosttySurfaceView>.FocusDirection
+    -> SplitTree<SurfaceView>.FocusDirection
   {
     switch direction {
     case .previous:
@@ -973,7 +1107,7 @@ final class WorktreeTerminalState {
   }
 
   private func mapResizeDirection(_ direction: GhosttySplitAction.ResizeDirection)
-    -> SplitTree<GhosttySurfaceView>.SpatialDirection
+    -> SplitTree<SurfaceView>.SpatialDirection
   {
     switch direction {
     case .left:
@@ -1055,7 +1189,7 @@ final class WorktreeTerminalState {
   }
 
   private func mapDropZone(_ zone: TerminalSplitTreeView.DropZone)
-    -> SplitTree<GhosttySurfaceView>.NewDirection
+    -> SplitTree<SurfaceView>.NewDirection
   {
     switch zone {
     case .top:

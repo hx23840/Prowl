@@ -16,10 +16,14 @@ struct WorktreeTerminalTabsView: View {
         manager: state.tabManager,
         createTab: createTab,
         splitHorizontally: {
-          _ = state.performBindingActionOnFocusedSurface("new_split:down")
+          if !state.performBindingActionOnFocusedSurface("new_split:down") {
+            state.createTerminalSplitNextToFocused(direction: .down)
+          }
         },
         splitVertically: {
-          _ = state.performBindingActionOnFocusedSurface("new_split:right")
+          if !state.performBindingActionOnFocusedSurface("new_split:right") {
+            state.createTerminalSplitNextToFocused(direction: .right)
+          }
         },
         canSplit: state.tabManager.selectedTabId != nil,
         closeTab: { tabId in

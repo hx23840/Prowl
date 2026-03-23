@@ -3,12 +3,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct TerminalSplitTreeView: View {
-  let tree: SplitTree<GhosttySurfaceView>
+  let tree: SplitTree<SurfaceView>
   var pinnedSize: CGSize?
   let action: (Operation) -> Void
 
   private static let dragType = UTType(exportedAs: "com.onevcat.prowl.ghosttySurfaceId")
-  private static func dragProvider(for surfaceView: GhosttySurfaceView) -> NSItemProvider {
+  private static func dragProvider(for surfaceView: SurfaceView) -> NSItemProvider {
     let provider = NSItemProvider()
     let data = surfaceView.id.uuidString.data(using: .utf8) ?? Data()
     provider.registerDataRepresentation(
@@ -29,13 +29,13 @@ struct TerminalSplitTreeView: View {
   }
 
   enum Operation {
-    case resize(node: SplitTree<GhosttySurfaceView>.Node, ratio: Double)
+    case resize(node: SplitTree<SurfaceView>.Node, ratio: Double)
     case drop(payloadId: UUID, destinationId: UUID, zone: DropZone)
     case equalize
   }
 
   struct SubtreeView: View {
-    let node: SplitTree<GhosttySurfaceView>.Node
+    let node: SplitTree<SurfaceView>.Node
     var isRoot: Bool = false
     var pinnedSize: CGSize?
     let action: (Operation) -> Void
@@ -79,7 +79,7 @@ struct TerminalSplitTreeView: View {
     }
 
     private func splitChildSize(
-      _ size: CGSize, ratio: Double, direction: SplitTree<GhosttySurfaceView>.Direction
+      _ size: CGSize, ratio: Double, direction: SplitTree<SurfaceView>.Direction
     ) -> CGSize {
       switch direction {
       case .horizontal:
@@ -91,7 +91,7 @@ struct TerminalSplitTreeView: View {
   }
 
   struct LeafView: View {
-    let surfaceView: GhosttySurfaceView
+    let surfaceView: SurfaceView
     let isSplit: Bool
     var pinnedSize: CGSize?
     let action: (Operation) -> Void
@@ -100,16 +100,8 @@ struct TerminalSplitTreeView: View {
 
     var body: some View {
       GeometryReader { geometry in
-        GhosttyTerminalView(surfaceView: surfaceView, pinnedSize: pinnedSize)
+        leafContent
           .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .overlay(alignment: .top) {
-            GhosttySurfaceProgressOverlay(state: surfaceView.bridge.state)
-          }
-          .overlay(alignment: .topTrailing) {
-            if surfaceView.bridge.state.searchNeedle != nil {
-              GhosttySurfaceSearchOverlay(surfaceView: surfaceView)
-            }
-          }
           .overlay(alignment: .top) {
             if isSplit {
               DragHandle(surfaceView: surfaceView)
@@ -136,10 +128,27 @@ struct TerminalSplitTreeView: View {
       }
     }
 
+    @ViewBuilder
+    private var leafContent: some View {
+      switch surfaceView.content {
+      case .terminal(let terminalView):
+        GhosttyTerminalView(surfaceView: terminalView, pinnedSize: pinnedSize)
+          .overlay(alignment: .top) {
+            GhosttySurfaceProgressOverlay(state: terminalView.bridge.state)
+          }
+          .overlay(alignment: .topTrailing) {
+            if terminalView.bridge.state.searchNeedle != nil {
+              GhosttySurfaceSearchOverlay(surfaceView: terminalView)
+            }
+          }
+      case .browser(let browserView):
+        BrowserPaneView(browserView: browserView)
+      }
+    }
   }
 
   struct DragHandle: View {
-    let surfaceView: GhosttySurfaceView
+    let surfaceView: SurfaceView
     private let handleHeight: CGFloat = 10
     @State private var isHovering = false
 
@@ -298,7 +307,7 @@ struct TerminalSplitTreeView: View {
 /// Wraps the SwiftUI split tree in an AppKit view so we can expose an ordered
 /// list of terminal panes to assistive technologies.
 struct TerminalSplitTreeAXContainer: NSViewRepresentable {
-  let tree: SplitTree<GhosttySurfaceView>
+  let tree: SplitTree<SurfaceView>
   let action: (TerminalSplitTreeView.Operation) -> Void
 
   func makeNSView(context: Context) -> TerminalSplitAXContainerView {
@@ -318,11 +327,11 @@ struct TerminalSplitTreeAXContainer: NSViewRepresentable {
 @MainActor
 final class TerminalSplitAXContainerView: NSView {
   private var hostingView: NSHostingView<AnyView>?
-  private var panes: [GhosttySurfaceView] = []
+  private var panes: [SurfaceView] = []
   private var panesLabel: String = "Terminal split: 0 panes"
   private var lastPaneIDs: [UUID] = []
 
-  func update(rootView: AnyView, panes: [GhosttySurfaceView]) {
+  func update(rootView: AnyView, panes: [SurfaceView]) {
     if let hostingView {
       hostingView.rootView = rootView
     } else {
@@ -343,7 +352,7 @@ final class TerminalSplitAXContainerView: NSView {
     panesLabel = "Terminal split: \(panes.count) pane" + (panes.count == 1 ? "" : "s")
 
     for (index, pane) in panes.enumerated() {
-      pane.setAccessibilityPaneIndex(index: index + 1, total: panes.count)
+      pane.terminalView?.setAccessibilityPaneIndex(index: index + 1, total: panes.count)
       // Expose panes as direct children of this split group for predictable navigation.
       pane.setAccessibilityParent(self)
     }
