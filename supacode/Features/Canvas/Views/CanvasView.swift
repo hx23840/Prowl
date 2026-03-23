@@ -46,49 +46,7 @@ struct CanvasView: View {
         // reaching the NSView, keeping terminal grid stable during zoom.
         ForEach(activeStates, id: \.worktreeID) { state in
           ForEach(state.tabManager.tabs) { tab in
-            if state.surfaceView(for: tab.id) != nil {
-              let tree = state.splitTree(for: tab.id)
-              let cardKey = tab.id.rawValue.uuidString
-              let baseLayout = layoutStore.cardLayouts[cardKey] ?? CanvasCardLayout(position: .zero)
-              let resized = resizedFrame(for: tab.id, baseLayout: baseLayout)
-              let screenCenter = screenPosition(for: resized.center)
-              let cardTotalHeight = resized.size.height + titleBarHeight
-
-              CanvasCardView(
-                repositoryName: Repository.name(for: state.repositoryRootURL),
-                worktreeName: tab.title,
-                tree: tree,
-                isFocused: focusedTabID == tab.id,
-                hasUnseenNotification: state.hasUnseenNotification(for: tab.id),
-                cardSize: resized.size,
-                canvasScale: canvasScale,
-                onTap: {
-                  if let activeSurface = state.surfaceView(for: tab.id) {
-                    focusCard(tab.id, surfaceView: activeSurface, states: activeStates)
-                  }
-                },
-                onDragCommit: { translation in commitDrag(for: cardKey, translation: translation) },
-                onResize: { edge, translation in
-                  activeResize[tab.id] = ActiveResize(
-                    edge: edge,
-                    translation: CGSize(
-                      width: translation.width / canvasScale,
-                      height: translation.height / canvasScale
-                    )
-                  )
-                },
-                onResizeEnd: { commitResize(for: tab.id, cardKey: cardKey, surfaces: tree.leaves()) },
-                onSplitOperation: { operation in
-                  state.performSplitOperation(operation, in: tab.id)
-                }
-              )
-              .scaleEffect(canvasScale, anchor: .center)
-              .offset(
-                x: screenCenter.x - resized.size.width / 2,
-                y: screenCenter.y - cardTotalHeight / 2
-              )
-              .zIndex(focusedTabID == tab.id ? 1 : 0)
-            }
+            canvasCard(for: tab, state: state, activeStates: activeStates)
           }
         }
       }
@@ -113,6 +71,57 @@ struct CanvasView: View {
     }
     .task { activateCanvas() }
     .onDisappear { deactivateCanvas() }
+  }
+
+  @ViewBuilder
+  private func canvasCard(
+    for tab: TerminalTabItem,
+    state: WorktreeTerminalState,
+    activeStates: [WorktreeTerminalState]
+  ) -> some View {
+    if state.surfaceView(for: tab.id) != nil {
+      let tree = state.splitTree(for: tab.id)
+      let cardKey = tab.id.rawValue.uuidString
+      let baseLayout = layoutStore.cardLayouts[cardKey] ?? CanvasCardLayout(position: .zero)
+      let resized = resizedFrame(for: tab.id, baseLayout: baseLayout)
+      let screenCenter = screenPosition(for: resized.center)
+      let cardTotalHeight = resized.size.height + titleBarHeight
+
+      CanvasCardView(
+        repositoryName: Repository.name(for: state.repositoryRootURL),
+        worktreeName: tab.title,
+        tree: tree,
+        isFocused: focusedTabID == tab.id,
+        hasUnseenNotification: state.hasUnseenNotification(for: tab.id),
+        cardSize: resized.size,
+        canvasScale: canvasScale,
+        onTap: {
+          if let activeSurface = state.surfaceView(for: tab.id) {
+            focusCard(tab.id, surfaceView: activeSurface, states: activeStates)
+          }
+        },
+        onDragCommit: { translation in commitDrag(for: cardKey, translation: translation) },
+        onResize: { edge, translation in
+          activeResize[tab.id] = ActiveResize(
+            edge: edge,
+            translation: CGSize(
+              width: translation.width / canvasScale,
+              height: translation.height / canvasScale
+            )
+          )
+        },
+        onResizeEnd: { commitResize(for: tab.id, cardKey: cardKey, surfaces: tree.leaves()) },
+        onSplitOperation: { operation in
+          state.performSplitOperation(operation, in: tab.id)
+        }
+      )
+      .scaleEffect(canvasScale, anchor: .center)
+      .offset(
+        x: screenCenter.x - resized.size.width / 2,
+        y: screenCenter.y - cardTotalHeight / 2
+      )
+      .zIndex(focusedTabID == tab.id ? 1 : 0)
+    }
   }
 
   // MARK: - Canvas Gestures
@@ -379,7 +388,7 @@ struct CanvasView: View {
 
   // MARK: - Resize
 
-  private func commitResize(for tabID: TerminalTabID, cardKey: String, surfaces: [GhosttySurfaceView]) {
+  private func commitResize(for tabID: TerminalTabID, cardKey: String, surfaces: [SurfaceView]) {
     guard activeResize[tabID] != nil else { return }
     if var layout = layoutStore.cardLayouts[cardKey] {
       let resized = resizedFrame(for: tabID, baseLayout: layout)
@@ -398,7 +407,7 @@ struct CanvasView: View {
 
   private func focusCard(
     _ tabID: TerminalTabID,
-    surfaceView: GhosttySurfaceView,
+    surfaceView: SurfaceView,
     states: [WorktreeTerminalState]
   ) {
     let previousTabID = focusedTabID
@@ -416,12 +425,12 @@ struct CanvasView: View {
       let previousState = states.first(where: { $0.surfaceView(for: previousTabID) != nil })
     {
       for surface in previousState.splitTree(for: previousTabID).leaves() {
-        surface.focusDidChange(false)
+        surface.terminalView?.focusDidChange(false)
       }
     }
 
-    surfaceView.focusDidChange(true)
-    surfaceView.requestFocus()
+    surfaceView.terminalView?.focusDidChange(true)
+    surfaceView.terminalView?.requestFocus()
   }
 
   private func unfocusAll() {
@@ -431,7 +440,7 @@ struct CanvasView: View {
       .first(where: { $0.surfaceView(for: previousTabID) != nil })
     {
       for surface in state.splitTree(for: previousTabID).leaves() {
-        surface.focusDidChange(false)
+        surface.terminalView?.focusDidChange(false)
       }
     }
   }
@@ -459,7 +468,7 @@ struct CanvasView: View {
     for state in activeStates {
       for tab in state.tabManager.tabs {
         for surface in state.splitTree(for: tab.id).leaves() {
-          surface.setOcclusion(true)
+          surface.terminalView?.setOcclusion(true)
         }
       }
     }
@@ -470,8 +479,8 @@ struct CanvasView: View {
     for state in terminalManager.activeWorktreeStates {
       for tab in state.tabManager.tabs {
         for surface in state.splitTree(for: tab.id).leaves() {
-          surface.setOcclusion(false)
-          surface.focusDidChange(false)
+          surface.terminalView?.setOcclusion(false)
+          surface.terminalView?.focusDidChange(false)
         }
       }
     }

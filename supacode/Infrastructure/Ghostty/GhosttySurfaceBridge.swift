@@ -18,6 +18,7 @@ final class GhosttySurfaceBridge {
   var onProgressReport: ((ghostty_action_progress_report_state_e) -> Void)?
   var onDesktopNotification: ((String, String) -> Void)?
   var onCommandFinished: ((Int?, UInt64) -> Void)?
+  var onOpenUrl: ((String) -> Void)?
   var onPromptTitle: ((ghostty_action_prompt_title_e) -> Void)?
   private var progressResetTask: Task<Void, Never>?
 
@@ -28,6 +29,7 @@ final class GhosttySurfaceBridge {
   func handleAction(target: ghostty_target_s, action: ghostty_action_s) -> Bool {
     if let handled = handleAppAction(action) { return handled }
     if let handled = handleSplitAction(action) { return handled }
+    if let handled = handleOpenUrlAction(action) { return handled }
     if handleTitleAndPath(action) { return false }
     if handleCommandStatus(action) { return false }
     if handleMouseAndLink(action) { return false }
@@ -89,6 +91,17 @@ final class GhosttySurfaceBridge {
     default:
       return nil
     }
+  }
+
+  private func handleOpenUrlAction(_ action: ghostty_action_s) -> Bool? {
+    guard action.tag == GHOSTTY_ACTION_OPEN_URL, onOpenUrl != nil else { return nil }
+    let openUrl = action.action.open_url
+    state.openUrlKind = openUrl.kind
+    state.openUrl = string(from: openUrl.url, length: openUrl.len)
+    if let urlString = state.openUrl {
+      onOpenUrl?(urlString)
+    }
+    return true
   }
 
   private func handleSplitAction(_ action: ghostty_action_s) -> Bool? {
