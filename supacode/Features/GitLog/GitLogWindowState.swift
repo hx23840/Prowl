@@ -54,7 +54,7 @@ final class GitLogWindowState {
       gitLogLogger.info("selectCommit: skipped (same commit \(commit.shortHash))")
       return
     }
-    gitLogLogger.info("selectCommit: \(commit.shortHash) worktreeURL=\(worktreeURL?.path ?? "nil")")
+    gitLogLogger.info("selectCommit: \(commit.shortHash)")
     selectedCommit = commit
     commitFiles = []
     selectedFile = nil
@@ -63,7 +63,7 @@ final class GitLogWindowState {
     isLoadingDetail = true
     detailTask?.cancel()
     guard let worktreeURL else {
-      gitLogLogger.warning("selectCommit: worktreeURL is nil, aborting")
+      gitLogLogger.warning("selectCommit: worktreeURL is nil")
       isLoadingDetail = false
       return
     }
@@ -111,9 +111,7 @@ final class GitLogWindowState {
     )
     guard !Task.isCancelled else { return }
     let files = DiffChangedFile.parseNameStatus(output)
-    gitLogLogger.info(
-      "commit \(commit.shortHash) diff-tree returned \(files.count) files"
-    )
+    gitLogLogger.info("commit \(commit.shortHash) diff-tree returned \(files.count) files")
     commitFiles = files
 
     let documents = await Self.loadAllDocuments(

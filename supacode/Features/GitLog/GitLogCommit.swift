@@ -22,7 +22,9 @@ nonisolated struct GitLogCommit: Identifiable, Hashable, Sendable {
     let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }
     return trimmed.split(separator: Character(recordSeparator)).compactMap { record in
-      let fields = record.split(
+      // git --format= uses tformat mode which inserts \n between records
+      let cleaned = record.drop(while: \.isNewline)
+      let fields = cleaned.split(
         separator: Character(fieldSeparator),
         maxSplits: 5,
         omittingEmptySubsequences: false

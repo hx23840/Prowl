@@ -80,6 +80,23 @@ struct GitLogCommitTests {
   }
 
   @Test
+  func parsesRecordsWithTformatNewlines() {
+    // git --format= uses tformat mode which inserts \n between records
+    let first =
+      ["hash1", "h1", "Alice", "2026-03-20T10:00:00+00:00", "first", "first body"]
+      .joined(separator: fieldSep) + recordSep
+    let second =
+      ["hash2", "h2", "Bob", "2026-03-19T09:00:00+00:00", "second", "second body"]
+      .joined(separator: fieldSep) + recordSep
+
+    let commits = GitLogCommit.parse(first + "\n" + second)
+
+    #expect(commits.count == 2)
+    #expect(commits[0].hash == "hash1")
+    #expect(commits[1].hash == "hash2")
+  }
+
+  @Test
   func parsesDateCorrectly() {
     let output =
       ["hash1", "h1", "Alice", "2026-03-20T10:30:00+00:00", "test", "test"]
