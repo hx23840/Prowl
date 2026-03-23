@@ -3,6 +3,7 @@ import SwiftUI
 
 struct CanvasView: View {
   let terminalManager: WorktreeTerminalManager
+  var onExitToTab: () -> Void = {}
   @State private var layoutStore = CanvasLayoutStore()
 
   @State private var canvasOffset: CGSize = .zero
@@ -80,6 +81,12 @@ struct CanvasView: View {
                 onResizeEnd: { commitResize(for: tab.id, cardKey: cardKey, surfaces: tree.leaves()) },
                 onSplitOperation: { operation in
                   state.performSplitOperation(operation, in: tab.id)
+                },
+                onTitleBarDoubleClick: {
+                  if let activeSurface = state.surfaceView(for: tab.id) {
+                    focusCard(tab.id, surfaceView: activeSurface, states: activeStates)
+                  }
+                  onExitToTab()
                 }
               )
               .scaleEffect(canvasScale, anchor: .center)
