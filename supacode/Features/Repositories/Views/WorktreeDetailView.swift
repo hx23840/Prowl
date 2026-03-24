@@ -57,18 +57,10 @@ struct WorktreeDetailView: View {
             onDismissAll: { dismissAllToolbarNotifications(in: notificationGroups) }
           )
         }
-      } else if selectedWorktree != nil && hasActiveTerminalTarget, let selectedWorktree {
-        let pullRequest = repositories.worktreeInfo(for: selectedWorktree.id)?.pullRequest
-        let matchesBranch =
-          if let pullRequest {
-            pullRequest.headRefName == nil || pullRequest.headRefName == selectedWorktree.name
-          } else {
-            false
-          }
-        let toolbarState = WorktreeToolbarState(
-          branchName: selectedWorktree.name,
-          statusToast: repositories.statusToast,
-          pullRequest: matchesBranch ? pullRequest : nil,
+      } else if hasActiveTerminalTarget,
+        let toolbarState = toolbarState(
+          repositories: repositories,
+          selectedWorktree: selectedWorktree,
           notificationGroups: notificationGroups,
           unseenNotificationWorktreeCount: unseenNotificationWorktreeCount,
           openActionSelection: openActionSelection,
@@ -77,9 +69,11 @@ struct WorktreeDetailView: View {
           runScriptIsRunning: runScriptIsRunning,
           customCommands: customCommands
         )
+      {
         WorktreeToolbarContent(
           toolbarState: toolbarState,
           onRenameBranch: { newBranch in
+            guard let selectedWorktree else { return }
             store.send(.repositories(.requestRenameBranch(selectedWorktree.id, newBranch)))
           },
           onOpenWorktree: { action in
@@ -89,8 +83,9 @@ struct WorktreeDetailView: View {
             store.send(.openActionSelectionChanged(action))
           },
           onCopyPath: {
+            guard let selectedTerminalWorktree else { return }
             NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(selectedWorktree.workingDirectory.path, forType: .string)
+            NSPasteboard.general.setString(selectedTerminalWorktree.workingDirectory.path, forType: .string)
           },
           onSelectNotification: selectToolbarNotification,
           onDismissAllNotifications: { dismissAllToolbarNotifications(in: notificationGroups) },
@@ -108,6 +103,44 @@ struct WorktreeDetailView: View {
       runScriptIsRunning: runScriptIsRunning
     )
     return applyFocusedActions(content: content, actions: actions)
+  }
+
+  private func toolbarState(
+    repositories: RepositoriesFeature.State,
+    selectedWorktree: Worktree?,
+    notificationGroups: [ToolbarNotificationRepositoryGroup],
+    unseenNotificationWorktreeCount: Int,
+    openActionSelection: OpenWorktreeAction,
+    showExtras: Bool,
+    runScriptEnabled: Bool,
+    runScriptIsRunning: Bool,
+    customCommands: [OnevcatCustomCommand]
+  ) -> WorktreeToolbarState? {
+    guard let title = DetailToolbarTitle.forSelection(
+      worktree: selectedWorktree,
+      repository: repositories.selectedRepository
+    ) else {
+      return nil
+    }
+    let pullRequest = selectedWorktree.flatMap { repositories.worktreeInfo(for: $0.id)?.pullRequest }
+    let matchesBranch =
+      if let selectedWorktree, let pullRequest {
+        pullRequest.headRefName == nil || pullRequest.headRefName == selectedWorktree.name
+      } else {
+        false
+      }
+    return WorktreeToolbarState(
+      title: title,
+      statusToast: repositories.statusToast,
+      pullRequest: matchesBranch ? pullRequest : nil,
+      notificationGroups: notificationGroups,
+      unseenNotificationWorktreeCount: unseenNotificationWorktreeCount,
+      openActionSelection: openActionSelection,
+      showExtras: showExtras,
+      runScriptEnabled: runScriptEnabled,
+      runScriptIsRunning: runScriptIsRunning,
+      customCommands: customCommands
+    )
   }
 
   private func selectedWorktreeSummaries(
@@ -263,7 +296,7 @@ struct WorktreeDetailView: View {
   }
 
   fileprivate struct WorktreeToolbarState {
-    let branchName: String
+    let title: DetailToolbarTitle
     let statusToast: RepositoriesFeature.StatusToast?
     let pullRequest: GithubPullRequest?
     let notificationGroups: [ToolbarNotificationRepositoryGroup]
@@ -298,8 +331,8 @@ struct WorktreeDetailView: View {
     var body: some ToolbarContent {
       ToolbarItem {
         WorktreeDetailTitleView(
-          branchName: toolbarState.branchName,
-          onSubmit: onRenameBranch
+          title: toolbarState.title,
+          onSubmit: toolbarState.title.supportsRename ? onRenameBranch : nil
         )
       }
 
@@ -313,16 +346,14 @@ struct WorktreeDetailView: View {
         .padding(.horizontal)
       }
 
-      if !toolbarState.notificationGroups.isEmpty {
-        ToolbarSpacer(.fixed)
-        ToolbarItemGroup {
-          ToolbarNotificationsPopoverButton(
-            groups: toolbarState.notificationGroups,
-            unseenWorktreeCount: toolbarState.unseenNotificationWorktreeCount,
-            onSelectNotification: onSelectNotification,
-            onDismissAll: onDismissAllNotifications
-          )
-        }
+      ToolbarSpacer(.fixed)
+      ToolbarItemGroup {
+        ToolbarNotificationsPopoverButton(
+          groups: toolbarState.notificationGroups,
+          unseenWorktreeCount: toolbarState.unseenNotificationWorktreeCount,
+          onSelectNotification: onSelectNotification,
+          onDismissAll: onDismissAllNotifications
+        )
       }
 
       ToolbarSpacer(.flexible)
@@ -648,7 +679,7 @@ private struct WorktreeToolbarPreview: View {
 
   init() {
     toolbarState = WorktreeDetailView.WorktreeToolbarState(
-      branchName: "feature/toolbar-preview",
+      title: DetailToolbarTitle(kind: .branch(name: "feature/toolbar-preview")),
       statusToast: nil,
       pullRequest: nil,
       notificationGroups: [],
