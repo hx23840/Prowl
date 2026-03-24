@@ -261,6 +261,7 @@ struct AppFeature {
           @Shared(.onevcatRepositorySettings(repository.rootURL)) var onevcatRepositorySettings
           state.settings.repositorySettings = RepositorySettingsFeature.State(
             rootURL: repository.rootURL,
+            repositoryKind: repository.kind,
             settings: repositorySettings,
             onevcatSettings: onevcatRepositorySettings
           )
