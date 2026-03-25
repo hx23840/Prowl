@@ -119,6 +119,8 @@ final class GhosttySurfaceView: NSView, Identifiable {
   }
   var onFocusChange: ((Bool) -> Void)?
   var onKeyInput: (() -> Void)?
+  var onCommittedText: ((String) -> Void)?
+  var onMirroredKey: ((MirroredTerminalKey) -> Void)?
 
   private var accessibilityPaneIndexHelp: String?
 
@@ -562,6 +564,9 @@ final class GhosttySurfaceView: NSView, Identifiable {
     }
     bridge.state.bellCount = 0
     onKeyInput?()
+    if let mirroredKey = MirroredTerminalKey(event: event) {
+      onMirroredKey?(mirroredKey)
+    }
     let (translationEvent, translationMods) = translationState(event, surface: surface)
     let action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS
     keyTextAccumulator = []
@@ -994,6 +999,15 @@ final class GhosttySurfaceView: NSView, Identifiable {
         return true
       }
       keyDown(with: event)
+      // Ghostty handled paste internally; broadcast the pasted text to followers.
+      if onCommittedText != nil,
+        event.modifierFlags.contains(.command),
+        event.charactersIgnoringModifiers == "v",
+        let text = NSPasteboard.general.string(forType: .string),
+        !text.isEmpty
+      {
+        onCommittedText?(text)
+      }
       return true
     }
 
@@ -1197,6 +1211,9 @@ final class GhosttySurfaceView: NSView, Identifiable {
 
   @IBAction func paste(_ sender: Any?) {
     performBindingAction("paste_from_clipboard")
+    if let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
+      onCommittedText?(text)
+    }
   }
 
   @IBAction func pasteSelection(_ sender: Any?) {
@@ -1554,9 +1571,9 @@ extension GhosttySurfaceView: NSTextInputClient {
     return window.convertToScreen(winRect)
   }
 
-  func insertText(_ string: Any, replacementRange: NSRange) {
+  func insertText(_ string: Any, replacementRange _: NSRange) {
     guard NSApp.currentEvent != nil else { return }
-    guard let surface else { return }
+    guard surface != nil else { return }
     var chars = ""
     switch string {
     case let attributedText as NSAttributedString:
@@ -1570,13 +1587,37 @@ extension GhosttySurfaceView: NSTextInputClient {
     if var acc = keyTextAccumulator {
       acc.append(chars)
       keyTextAccumulator = acc
+      onCommittedText?(chars)
       return
     }
-    let len = chars.utf8CString.count
-    if len == 0 { return }
-    chars.withCString { ptr in
+    insertCommittedTextForBroadcast(chars)
+    onCommittedText?(chars)
+  }
+
+  func insertCommittedTextForBroadcast(_ text: String) {
+    guard let surface else { return }
+    guard !text.isEmpty else { return }
+    unmarkText()
+    let len = text.utf8CString.count
+    guard len > 0 else { return }
+    text.withCString { ptr in
       ghostty_surface_text(surface, ptr, UInt(len - 1))
     }
+  }
+
+  @discardableResult
+  func applyMirroredKeyForBroadcast(_ key: MirroredTerminalKey) -> Bool {
+    let windowNumber = window?.windowNumber ?? 0
+    guard let keyDownEvent = key.keyDownEvent(windowNumber: windowNumber) else {
+      return false
+    }
+    keyDown(with: keyDownEvent)
+    if !key.isRepeat,
+      let keyUpEvent = key.keyUpEvent(windowNumber: windowNumber)
+    {
+      keyUp(with: keyUpEvent)
+    }
+    return true
   }
 
   @discardableResult

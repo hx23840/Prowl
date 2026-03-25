@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct CanvasView: View {
+  @Environment(CommandKeyObserver.self) private var commandKeyObserver
+
   let terminalManager: WorktreeTerminalManager
   var onExitToTab: () -> Void = {}
   @State private var layoutStore = CanvasLayoutStore()
@@ -10,7 +12,7 @@ struct CanvasView: View {
   @State private var lastCanvasOffset: CGSize = .zero
   @State private var canvasScale: CGFloat = 1.0
   @State private var lastCanvasScale: CGFloat = 1.0
-  @State private var focusedTabID: TerminalTabID?
+  @State private var selectionState = CanvasSelectionState()
   @State private var lastTitleBarTapDate: Date = .distantPast
   @State private var activeResize: [TerminalTabID: ActiveResize] = [:]
   @State private var hasPerformedInitialFit = false
@@ -28,19 +30,28 @@ struct CanvasView: View {
       GeometryReader { _ in
         let activeStates = terminalManager.activeWorktreeStates
         let allCardKeys = collectCardKeys(from: activeStates)
+        let allTabIDs = collectVisibleTabIDs(from: activeStates)
 
-        // Background layer: handles canvas pan and tap-to-unfocus.
+        // Background layer: handles canvas pan and tap-to-clear.
         Color.clear
-          .onAppear { ensureLayouts(for: allCardKeys) }
+          .onAppear {
+            ensureLayouts(for: allCardKeys)
+            pruneSelection(to: Set(allTabIDs), states: activeStates)
+            syncBroadcastCallbacks(states: activeStates)
+          }
           .onChange(of: allCardKeys) { _, newKeys in
             if newKeys.isEmpty {
               CanvasLayoutStore.hasAutoArrangedInSession = false
             }
             ensureLayouts(for: newKeys)
+            syncBroadcastCallbacks(states: activeStates)
+          }
+          .onChange(of: allTabIDs) { _, newTabIDs in
+            pruneSelection(to: Set(newTabIDs), states: activeStates)
           }
           .contentShape(.rect)
           .accessibilityAddTraits(.isButton)
-          .onTapGesture { unfocusAll() }
+          .onTapGesture { clearSelection(states: activeStates) }
           .gesture(canvasPanGesture)
 
         // Cards layer: one card per open tab across all worktrees.
@@ -60,14 +71,22 @@ struct CanvasView: View {
                 repositoryName: Repository.name(for: state.repositoryRootURL),
                 worktreeName: tab.title,
                 tree: tree,
-                isFocused: focusedTabID == tab.id,
+                isFocused: selectionState.primaryTabID == tab.id,
+                isSelected: selectionState.selectedTabIDs.contains(tab.id),
                 hasUnseenNotification: state.hasUnseenNotification(for: tab.id),
                 cardSize: resized.size,
                 canvasScale: canvasScale,
+                showsSelectionShield: showsSelectionShield(for: tab.id),
                 onTap: {
-                  if let activeSurface = state.surfaceView(for: tab.id) {
-                    focusCard(tab.id, surfaceView: activeSurface, states: activeStates)
+                  let cmdHeld = NSEvent.modifierFlags.contains(.command)
+                  if cmdHeld {
+                    handleSelectionShieldTap(tab.id, surfaceState: state, states: activeStates)
+                  } else {
+                    focusSingleCard(tab.id, surfaceState: state, states: activeStates)
                   }
+                },
+                onSelectionTap: {
+                  handleSelectionShieldTap(tab.id, surfaceState: state, states: activeStates)
                 },
                 onDragCommit: { translation in commitDrag(for: cardKey, translation: translation) },
                 onResize: { edge, translation in
@@ -82,12 +101,15 @@ struct CanvasView: View {
                 onResizeEnd: { commitResize(for: tab.id, cardKey: cardKey, surfaces: tree.leaves()) },
                 onSplitOperation: { operation in
                   state.performSplitOperation(operation, in: tab.id)
+                  if selectionState.isBroadcasting {
+                    syncBroadcastCallbacks(states: activeStates)
+                  }
                 },
                 onTitleBarTap: {
-                  let wasAlreadyFocused = focusedTabID == tab.id
-                  if let activeSurface = state.surfaceView(for: tab.id) {
-                    focusCard(tab.id, surfaceView: activeSurface, states: activeStates)
-                  }
+                  let wasAlreadyFocused =
+                    selectionState.primaryTabID == tab.id
+                    && selectionState.selectedTabIDs.count <= 1
+                  focusSingleCard(tab.id, surfaceState: state, states: activeStates)
                   let now = Date()
                   if wasAlreadyFocused,
                     now.timeIntervalSince(lastTitleBarTapDate) <= NSEvent.doubleClickInterval
@@ -102,7 +124,7 @@ struct CanvasView: View {
                 x: screenCenter.x - resized.size.width / 2,
                 y: screenCenter.y - cardTotalHeight / 2
               )
-              .zIndex(focusedTabID == tab.id ? 1 : 0)
+              .zIndex(zIndex(for: tab.id))
             }
           }
         }
@@ -126,8 +148,25 @@ struct CanvasView: View {
     .overlay(alignment: .bottomTrailing) {
       canvasToolbar
     }
+    .onKeyPress(.escape) {
+      guard selectionState.isBroadcasting else { return .ignored }
+      clearSelection(states: terminalManager.activeWorktreeStates)
+      return .handled
+    }
+    .onKeyPress("a", phases: .down) { keyPress in
+      guard keyPress.modifiers == [.command, .option] else { return .ignored }
+      selectAllCards()
+      return .handled
+    }
     .task { activateCanvas() }
     .onDisappear { deactivateCanvas() }
+  }
+
+  private func showsSelectionShield(for tabID: TerminalTabID) -> Bool {
+    if commandKeyObserver.isPressed { return true }
+    if selectionState.isSelecting { return true }
+    if selectionState.isBroadcasting, selectionState.primaryTabID != tabID { return true }
+    return false
   }
 
   // MARK: - Canvas Gestures
@@ -268,6 +307,14 @@ struct CanvasView: View {
     }
   }
 
+  private func collectVisibleTabIDs(from states: [WorktreeTerminalState]) -> [TerminalTabID] {
+    states.flatMap { state in
+      state.tabManager.tabs.compactMap { tab in
+        state.surfaceView(for: tab.id) != nil ? tab.id : nil
+      }
+    }
+  }
+
   /// Reset all card positions to a clean grid layout (uniform sizes).
   private func organizeCards() {
     let keys = collectCardKeys(from: terminalManager.activeWorktreeStates)
@@ -357,6 +404,27 @@ struct CanvasView: View {
 
   private var canvasToolbar: some View {
     HStack(spacing: 8) {
+      if selectionState.isBroadcasting {
+        Label(
+          "Broadcasting to \(selectionState.selectedTabIDs.count) cards",
+          systemImage: "dot.radiowaves.left.and.right"
+        )
+          .font(.callout)
+          .padding(.horizontal, 10)
+          .padding(.vertical, 6)
+          .background(.bar, in: Capsule())
+      }
+
+      Button {
+        selectAllCards()
+      } label: {
+        Image(systemName: "checkmark.rectangle.stack")
+          .font(.body)
+          .accessibilityLabel("Select All")
+      }
+      .buttonStyle(.bordered)
+      .help("Select all cards for broadcast (⌘⌥A)")
+
       Button {
         withAnimation(.easeInOut(duration: 0.2)) {
           arrangeCards()
@@ -386,6 +454,16 @@ struct CanvasView: View {
     .padding()
   }
 
+  private func zIndex(for tabID: TerminalTabID) -> Double {
+    if selectionState.primaryTabID == tabID {
+      return 2
+    }
+    if selectionState.selectedTabIDs.contains(tabID) {
+      return 1
+    }
+    return 0
+  }
+
   // MARK: - Drag
 
   private func commitDrag(for cardKey: String, translation: CGSize) {
@@ -413,44 +491,134 @@ struct CanvasView: View {
     }
   }
 
-  // MARK: - Focus
+  private func selectAllCards() {
+    let activeStates = terminalManager.activeWorktreeStates
+    let allTabIDs = collectVisibleTabIDs(from: activeStates)
+    guard allTabIDs.count > 1 else { return }
+    mutateSelection(states: activeStates) { state in
+      state.selectAll(allTabIDs)
+    }
+  }
 
-  private func focusCard(
+  // MARK: - Selection and Focus
+
+  private func focusSingleCard(
     _ tabID: TerminalTabID,
-    surfaceView: GhosttySurfaceView,
+    surfaceState _: WorktreeTerminalState,
     states: [WorktreeTerminalState]
   ) {
-    let previousTabID = focusedTabID
-    focusedTabID = tabID
-
-    // Sync the tab selection on the owning worktree so that exiting canvas
-    // (via toggleCanvas → selectWorktree) will focus the correct tab.
-    if let ownerState = states.first(where: { $0.surfaceView(for: tabID) != nil }) {
-      ownerState.tabManager.selectTab(tabID)
-      terminalManager.canvasFocusedWorktreeID = ownerState.worktreeID
+    mutateSelection(states: states) { state in
+      state.focusSingle(tabID)
     }
+  }
 
-    // Unfocus all surfaces in the previous card's split tree
-    if let previousTabID, previousTabID != tabID,
-      let previousState = states.first(where: { $0.surfaceView(for: previousTabID) != nil })
-    {
-      for surface in previousState.splitTree(for: previousTabID).leaves() {
-        surface.focusDidChange(false)
+  private func handleSelectionShieldTap(
+    _ tabID: TerminalTabID,
+    surfaceState _: WorktreeTerminalState,
+    states: [WorktreeTerminalState]
+  ) {
+    let cmdHeld = NSEvent.modifierFlags.contains(.command)
+    mutateSelection(states: states) { state in
+      if cmdHeld {
+        state.toggleSelection(tabID)
+      } else if state.isBroadcasting, state.selectedTabIDs.contains(tabID) {
+        state.setPrimary(tabID)
+      } else {
+        state.focusSingle(tabID)
       }
     }
+  }
 
+  private func clearSelection(states: [WorktreeTerminalState]) {
+    mutateSelection(states: states) { state in
+      state.clear()
+    }
+  }
+
+  private func pruneSelection(to visibleTabIDs: Set<TerminalTabID>, states: [WorktreeTerminalState]) {
+    let previousPrimaryTabID = selectionState.primaryTabID
+    selectionState.prune(to: visibleTabIDs)
+    syncPrimaryFocus(from: previousPrimaryTabID, to: selectionState.primaryTabID, states: states)
+    syncBroadcastCallbacks(states: states)
+  }
+
+  private func mutateSelection(
+    states: [WorktreeTerminalState],
+    mutation: (inout CanvasSelectionState) -> Void
+  ) {
+    let previousPrimaryTabID = selectionState.primaryTabID
+    mutation(&selectionState)
+    selectionState.prune(to: Set(collectVisibleTabIDs(from: states)))
+    syncPrimaryFocus(from: previousPrimaryTabID, to: selectionState.primaryTabID, states: states)
+    syncBroadcastCallbacks(states: states)
+  }
+
+  private func syncPrimaryFocus(
+    from previousTabID: TerminalTabID?,
+    to newTabID: TerminalTabID?,
+    states: [WorktreeTerminalState]
+  ) {
+    if let previousTabID, previousTabID != newTabID {
+      unfocusTab(previousTabID, states: states)
+    }
+
+    guard let newTabID,
+      let ownerState = states.first(where: { $0.surfaceView(for: newTabID) != nil }),
+      let surfaceView = ownerState.surfaceView(for: newTabID)
+    else {
+      terminalManager.canvasFocusedWorktreeID = nil
+      return
+    }
+
+    ownerState.tabManager.selectTab(newTabID)
+    terminalManager.canvasFocusedWorktreeID = ownerState.worktreeID
     surfaceView.focusDidChange(true)
     surfaceView.requestFocus()
   }
 
-  private func unfocusAll() {
-    guard let previousTabID = focusedTabID else { return }
-    focusedTabID = nil
-    if let state = terminalManager.activeWorktreeStates
-      .first(where: { $0.surfaceView(for: previousTabID) != nil })
-    {
-      for surface in state.splitTree(for: previousTabID).leaves() {
-        surface.focusDidChange(false)
+  private func unfocusTab(_ tabID: TerminalTabID, states: [WorktreeTerminalState]) {
+    guard let state = states.first(where: { $0.surfaceView(for: tabID) != nil }) else { return }
+    for surface in state.splitTree(for: tabID).leaves() {
+      surface.focusDidChange(false)
+    }
+  }
+
+  private func syncBroadcastCallbacks(states: [WorktreeTerminalState]) {
+    clearBroadcastCallbacks(states: states)
+
+    guard selectionState.isBroadcasting,
+      let primaryTabID = selectionState.primaryTabID,
+      let primaryState = terminalManager.stateContaining(tabId: primaryTabID)
+    else {
+      return
+    }
+
+    let selectedTabIDs = selectionState.selectedTabIDs
+    let beginBroadcast = { selectionState.beginBroadcastInteractionIfNeeded() }
+    for primarySurface in primaryState.splitTree(for: primaryTabID).leaves() {
+      primarySurface.onCommittedText = { [terminalManager, selectedTabIDs, primaryTabID, beginBroadcast] text in
+        Task { @MainActor in
+          beginBroadcast()
+          terminalManager.broadcastCommittedText(text, from: primaryTabID, to: selectedTabIDs)
+        }
+      }
+      primarySurface.onMirroredKey = {
+        [terminalManager, selectedTabIDs, primaryTabID, beginBroadcast] mirroredKey in
+        Task { @MainActor in
+          beginBroadcast()
+          terminalManager.broadcastMirroredKey(mirroredKey, from: primaryTabID, to: selectedTabIDs)
+        }
+      }
+    }
+  }
+
+  private func clearBroadcastCallbacks(states: [WorktreeTerminalState]) {
+    for state in states {
+      for tab in state.tabManager.tabs {
+        for surface in state.splitTree(for: tab.id).leaves() {
+          surface.onCommittedText = nil
+          surface.onMirroredKey = nil
+        }
       }
     }
   }
@@ -465,10 +633,13 @@ struct CanvasView: View {
     // Auto-focus the card that was active before entering canvas.
     if let selectedID = terminalManager.selectedWorktreeID,
       let state = activeStates.first(where: { $0.worktreeID == selectedID }),
-      let tabID = state.tabManager.selectedTabId,
-      let surface = state.surfaceView(for: tabID)
+      let tabID = state.tabManager.selectedTabId
     {
-      focusCard(tabID, surfaceView: surface, states: activeStates)
+      selectionState.focusSingle(tabID)
+      syncPrimaryFocus(from: nil, to: tabID, states: activeStates)
+    } else {
+      selectionState.clear()
+      syncBroadcastCallbacks(states: activeStates)
     }
 
     for state in activeStates {
@@ -485,7 +656,8 @@ struct CanvasView: View {
   }
 
   private func deactivateCanvas() {
-    focusedTabID = nil
+    clearBroadcastCallbacks(states: terminalManager.activeWorktreeStates)
+    selectionState.clear()
     // Don't occlude surfaces here. In SwiftUI's if/else view swap,
     // onAppear fires before onDisappear, so occluding here would undo
     // WorktreeTerminalTabsView.onAppear's syncFocus() and cause blank
@@ -557,9 +729,10 @@ private class CanvasScrollContainerView: NSView {
   var scrollCoordinator: CanvasScrollCoordinator?
 
   override func scrollWheel(with event: NSEvent) {
-    scrollCoordinator?.handleScroll(
-      deltaX: event.scrollingDeltaX,
-      deltaY: event.scrollingDeltaY
-    )
+    if event.phase == .began || event.phase == .changed || event.phase == .mayBegin || event.momentumPhase != [] {
+      scrollCoordinator?.handleScroll(deltaX: event.scrollingDeltaX, deltaY: event.scrollingDeltaY)
+      return
+    }
+    super.scrollWheel(with: event)
   }
 }
