@@ -999,6 +999,15 @@ final class GhosttySurfaceView: NSView, Identifiable {
         return true
       }
       keyDown(with: event)
+      // Ghostty handled paste internally; broadcast the pasted text to followers.
+      if onCommittedText != nil,
+        event.modifierFlags.contains(.command),
+        event.charactersIgnoringModifiers == "v",
+        let text = NSPasteboard.general.string(forType: .string),
+        !text.isEmpty
+      {
+        onCommittedText?(text)
+      }
       return true
     }
 
@@ -1202,9 +1211,6 @@ final class GhosttySurfaceView: NSView, Identifiable {
 
   @IBAction func paste(_ sender: Any?) {
     performBindingAction("paste_from_clipboard")
-    if let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
-      onCommittedText?(text)
-    }
   }
 
   @IBAction func pasteSelection(_ sender: Any?) {
