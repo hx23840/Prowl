@@ -8,6 +8,10 @@
   - Cmd+Click selection across full card area
   - Primary vs follower selected styling
   - Broadcast of committed text plus a small set of normalized special keys
+  - Whitelisted Cmd+key broadcast (Cmd+Backspace, Cmd+Arrow)
+  - Cmd+V paste broadcast via pasteboard string
+  - Cmd+Shift+A select all, Escape to clear
+  - Per-card selection shield during broadcasting
   - IME-safe follower behavior using committed text only
   - Tests for selection state transitions and input normalization/filtering
 - Out:
@@ -16,136 +20,135 @@
   - Follower-side IME candidate/preedit UI
 
 **Architecture:**
-- Keep selection state local to Canvas, but extract transition logic into a pure helper for tests.
-- Add a transparent selection shield so Cmd+Click works across the whole card, including terminal content.
+- Keep selection state local to Canvas as `@State var selectionState = CanvasSelectionState()`.
+- Add a transparent selection shield so Cmd+Click works across the whole card, including terminal content. Shield visibility is per-card during broadcasting (follower cards keep shield, primary does not).
 - Keep one primary card as the real first responder; mirror input from it to follower cards.
-- Introduce small normalized mirrored-key APIs instead of replaying arbitrary AppKit events everywhere.
+- Use `NSEvent.modifierFlags` for immediate Cmd detection in tap handlers (bypasses `CommandKeyObserver`'s 300ms hold delay).
+- Introduce `MirroredTerminalKey` (Sendable) for normalized key replay with a Cmd-key whitelist.
 - Treat IME specially: only committed text fans out; preedit stays primary-only.
+- Broadcast paste content by reading `NSPasteboard.general` string in `paste()` and firing `onCommittedText`.
 
 **Acceptance / Verification:**
 - Cmd+Click anywhere on a card toggles selection.
 - Non-Cmd click exits selection mode and returns to single-card interaction.
+- Non-Cmd click on a follower during broadcasting promotes it to primary.
+- Non-Cmd click on the primary during broadcasting passes through to terminal.
 - Clicking blank canvas clears selection and focus.
+- Escape clears broadcast selection.
+- Cmd+Shift+A selects all visible cards.
 - Multiple selected cards receive mirrored committed text.
+- Cmd+V paste text is broadcast to followers.
+- Cmd+Backspace and Cmd+Arrow are broadcast to followers.
 - Followers receive committed Chinese/Japanese text, not phonetic intermediate input.
 - Build passes and targeted tests pass.
 
-## Task 1: Add pure Canvas selection state machine
+## Task 1: Add pure Canvas selection state machine ✅
 
 **Files:**
-- Create: `supacode/Features/Canvas/Models/CanvasSelectionState.swift`
-- Create: `supacodeTests/CanvasSelectionStateTests.swift`
+- Created: `supacode/Features/Canvas/Models/CanvasSelectionState.swift`
+- Created: `supacodeTests/CanvasSelectionStateTests.swift`
 
-**Steps:**
-1. Add a pure selection model that stores selection mode, selected tab IDs, primary tab ID, and selection order.
-2. Write tests for Cmd+Click enter/toggle/remove, non-Cmd click exit, and blank-canvas clear.
-3. Run the new test file and confirm green.
+**Delivered:**
+- Pure `CanvasSelectionState` struct with `focusSingle`, `toggleSelection`, `setPrimary`, `selectAll`, `beginBroadcastInteractionIfNeeded`, `clear`, `prune`.
+- 10 tests covering all state transitions.
 
-## Task 2: Integrate selection model into CanvasView
-
-**Files:**
-- Modify: `supacode/Features/Canvas/Views/CanvasView.swift`
-
-**Steps:**
-1. Replace single-focus-only state with primary focus + selected tabs + selection mode.
-2. Preserve current initial focus / canvas exit behavior by mapping it to primary focus.
-3. Update z-order and unfocus logic to respect 0-selection and multi-selection.
-4. Build and fix compile errors before moving on.
-
-## Task 3: Add selected/follower visuals and selection shield hooks
+## Task 2: Integrate selection model into CanvasView ✅
 
 **Files:**
-- Modify: `supacode/Features/Canvas/Views/CanvasCardView.swift`
+- Modified: `supacode/Features/Canvas/Views/CanvasView.swift`
 
-**Steps:**
-1. Add separate styling for primary focused card vs follower selected cards.
-2. Add an overlay/shield path that can intercept clicks across the full card when selection mode or Cmd is active.
-3. Ensure normal single-card terminal interaction still works outside selection mode.
-4. Build and verify the view compiles.
+**Delivered:**
+- Replaced `focusedTabID` with `selectionState: CanvasSelectionState`.
+- `mutateSelection` helper centralizes state mutation, pruning, focus sync, and callback sync.
+- z-order respects primary > selected > unselected.
 
-## Task 4: Wire Cmd+Click anywhere on card
-
-**Files:**
-- Modify: `supacode/Features/Canvas/Views/CanvasView.swift`
-- Modify: `supacode/Features/Canvas/Views/CanvasCardView.swift`
-
-**Steps:**
-1. Use `CommandKeyObserver` from the environment in Canvas.
-2. Make Cmd+Click on card shield toggle selection.
-3. Make non-Cmd click on a card exit selection mode and focus that one card.
-4. Make blank-canvas click clear selection and focus.
-5. Run selection tests if they need updates.
-
-## Task 5: Add normalized mirrored-key model
+## Task 3: Add selected/follower visuals and selection shield hooks ✅
 
 **Files:**
-- Create: `supacode/Infrastructure/Ghostty/MirroredTerminalKey.swift`
-- Create: `supacodeTests/MirroredTerminalKeyTests.swift`
-- Modify: `supacode/Infrastructure/Ghostty/GhosttySurfaceView.swift`
+- Modified: `supacode/Features/Canvas/Views/CanvasCardView.swift`
 
-**Steps:**
-1. Define a small mirrored-key type for Enter, backspace, arrows, tab, escape, and control-character input.
-2. Add normalization helpers/tests for filtering out Command shortcuts.
-3. Run the new tests.
+**Delivered:**
+- Primary: 2pt accent border. Follower: 1.5pt accent at 65% opacity + background tint.
+- `selectionShield` overlay intercepts clicks via `onSelectionTap`.
+- Resize handles hidden when shield is active.
+- Terminal hit testing: `allowsHitTesting(isFocused && !showsSelectionShield)`.
 
-## Task 6: Add Ghostty broadcast hooks and safe follower APIs
-
-**Files:**
-- Modify: `supacode/Infrastructure/Ghostty/GhosttySurfaceView.swift`
-- Modify: `supacodeTests/GhosttySurfaceViewTests.swift`
-
-**Steps:**
-1. Add callbacks for committed text and mirrored special keys.
-2. Add follower-safe APIs that can insert committed text and replay normalized keys without stealing first responder.
-3. Keep IME preedit local to the primary card.
-4. Add focused unit tests for new pure helper behavior where practical.
-
-## Task 7: Add tab-scoped terminal broadcast helpers
+## Task 4: Wire Cmd+Click anywhere on card ✅
 
 **Files:**
-- Modify: `supacode/Features/Terminal/Models/WorktreeTerminalState.swift`
-- Modify: `supacode/Features/Terminal/BusinessLogic/WorktreeTerminalManager.swift`
-- Modify: `supacodeTests/WorktreeTerminalManagerTests.swift` (if practical)
+- Modified: `supacode/Features/Canvas/Views/CanvasView.swift`
+- Modified: `supacode/Features/Canvas/Views/CanvasCardView.swift`
 
-**Steps:**
-1. Add tab-scoped lookup and broadcast helper methods.
-2. Add a manager-level helper to fan out input from primary to followers.
-3. Keep primary as the real responder; do not refocus followers.
-4. Add tests for pure/observable behavior if practical.
+**Delivered:**
+- `showsSelectionShield(for:)` is per-card: all cards during `Cmd`/selecting; only followers during broadcasting.
+- `onTap` checks `NSEvent.modifierFlags.contains(.command)` directly for reliable Cmd detection (bypasses 300ms observer delay).
+- `handleSelectionShieldTap` dispatches to `toggleSelection`, `setPrimary`, or `focusSingle` based on Cmd state and broadcasting state.
+- Blank-canvas click clears selection.
 
-## Task 8: Connect primary-card input to follower broadcast
-
-**Files:**
-- Modify: `supacode/Features/Canvas/Views/CanvasView.swift`
-- Modify: `supacode/Features/Terminal/Models/WorktreeTerminalState.swift`
-- Modify: `supacode/Infrastructure/Ghostty/GhosttySurfaceView.swift`
-
-**Steps:**
-1. Subscribe primary-card surface callbacks only when multi-selection is active.
-2. Broadcast committed text to followers.
-3. Broadcast normalized special keys to followers.
-4. Keep IME committed-text behavior correct.
-5. Build and run targeted tests.
-
-## Task 9: Add lightweight Canvas broadcast status UI
+## Task 5: Add normalized mirrored-key model ✅
 
 **Files:**
-- Modify: `supacode/Features/Canvas/Views/CanvasView.swift`
+- Created: `supacode/Infrastructure/Ghostty/MirroredTerminalKey.swift`
+- Created: `supacodeTests/MirroredTerminalKeyTests.swift`
 
-**Steps:**
-1. Show `Broadcasting to N cards` when `selectedTabIDs.count > 1`.
-2. Make the hint subtle and consistent with existing canvas chrome.
-3. Build and verify layout visually if possible.
+**Delivered:**
+- `MirroredTerminalKey: Equatable, Sendable` with kinds: enter, backspace, deleteForward, arrows, tab, escape, controlCharacter.
+- Stores `modifierFlagsRawValue: UInt` for Sendable (computed `modifiers` property).
+- `commandAllowedKeyCodes` whitelist: Cmd+Backspace (51), Cmd+Arrow (123–126). All other Cmd combos rejected.
+- 6 tests covering normalization, Cmd filtering, whitelist, and plain-text rejection.
 
-## Task 10: Run verification and ship
+## Task 6: Add Ghostty broadcast hooks and safe follower APIs ✅
 
 **Files:**
-- Modify: plan docs if scope changed materially
+- Modified: `supacode/Infrastructure/Ghostty/GhosttySurfaceView.swift`
 
-**Steps:**
-1. Run targeted tests for new selection and mirrored-key logic.
-2. Run `make build-app`.
-3. If feasible, run broader test coverage (`make test` or a well-scoped subset) and capture any unrelated failures.
-4. Review diff.
-5. Commit only the feature changes.
-6. Push branch and open PR against `onevcat/Prowl`.
+**Delivered:**
+- `onCommittedText` callback: fires in `insertText()` and in `paste()` (reads pasteboard string).
+- `onMirroredKey` callback: fires in `keyDown()` for normalized keys.
+- `insertCommittedTextForBroadcast(_:)`: writes UTF-8 text via `ghostty_surface_text`.
+- `applyMirroredKeyForBroadcast(_:)`: replays NSEvent via `keyDown`/`keyUp` without stealing responder.
+
+## Task 7: Add tab-scoped terminal broadcast helpers ✅
+
+**Files:**
+- Modified: `supacode/Features/Terminal/Models/WorktreeTerminalState.swift`
+- Modified: `supacode/Features/Terminal/BusinessLogic/WorktreeTerminalManager.swift`
+
+**Delivered:**
+- `WorktreeTerminalState.insertCommittedText(_:in:)` and `applyMirroredKey(_:in:)`.
+- `WorktreeTerminalManager.stateContaining(tabId:)` lookup.
+- `broadcastCommittedText` / `broadcastMirroredKey` fan-out methods with `@discardableResult` return count.
+- Debug logging via `SupaLogger` for broadcast failures.
+
+## Task 8: Connect primary-card input to follower broadcast ✅
+
+**Files:**
+- Modified: `supacode/Features/Canvas/Views/CanvasView.swift`
+
+**Delivered:**
+- `syncBroadcastCallbacks` sets `onCommittedText`/`onMirroredKey` on primary surface's leaves only when broadcasting.
+- `clearBroadcastCallbacks` nils out all callbacks on all surfaces.
+- Callbacks use explicit capture list with `beginBroadcast` closure for safe `selectionState` mutation.
+- Callbacks re-sync after split operations on primary card.
+- Callbacks sync on `onAppear`, `onChange(allCardKeys)`, `onChange(allTabIDs)`, `mutateSelection`, `pruneSelection`, `deactivateCanvas`.
+
+## Task 9: Add Canvas keyboard shortcuts and toolbar ✅
+
+**Files:**
+- Modified: `supacode/Features/Canvas/Views/CanvasView.swift`
+
+**Delivered:**
+- `.onKeyPress(.escape)`: clears selection when broadcasting.
+- `.onKeyPress("a", phases: .down)` with `keyPress.modifiers == [.command, .shift]`: selects all cards.
+- Toolbar: select-all button + broadcasting badge + arrange + organize.
+
+## Task 10: Polish and verification ✅
+
+**Delivered:**
+- Fixed reversed canvas scroll direction (removed incorrect delta negation in `CanvasScrollContainerView`).
+- Fixed unsafe `selectionState` capture in broadcast callbacks.
+- Made `MirroredTerminalKey` Sendable via raw UInt storage.
+- Added Cmd+Backspace/Arrow whitelist.
+- Added Cmd+V paste broadcast.
+- All tests pass. Build passes. Lint passes.
+- Design and implementation plan docs updated to match final implementation.
