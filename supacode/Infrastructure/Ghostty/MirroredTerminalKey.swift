@@ -27,6 +27,15 @@ struct MirroredTerminalKey: Equatable, Sendable {
     NSEvent.ModifierFlags(rawValue: modifierFlagsRawValue)
   }
 
+  /// Key codes allowed to pass through even with the Command modifier held.
+  private static let commandAllowedKeyCodes: Set<UInt16> = [
+    51,  // backspace
+    123, // arrowLeft
+    124, // arrowRight
+    125, // arrowDown
+    126, // arrowUp
+  ]
+
   init?(
     kind: Kind,
     keyCode: UInt16,
@@ -35,7 +44,7 @@ struct MirroredTerminalKey: Equatable, Sendable {
     modifiers: NSEvent.ModifierFlags,
     isRepeat: Bool
   ) {
-    guard !modifiers.contains(.command) else { return nil }
+    if modifiers.contains(.command), !Self.commandAllowedKeyCodes.contains(keyCode) { return nil }
     self.kind = kind
     self.keyCode = keyCode
     self.characters = characters
@@ -47,7 +56,7 @@ struct MirroredTerminalKey: Equatable, Sendable {
   init?(event: NSEvent) {
     guard event.type == .keyDown else { return nil }
     let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-    guard !modifiers.contains(.command) else { return nil }
+    if modifiers.contains(.command), !Self.commandAllowedKeyCodes.contains(event.keyCode) { return nil }
     guard let kind = Self.kind(for: event, modifiers: modifiers) else { return nil }
     self.kind = kind
     keyCode = event.keyCode

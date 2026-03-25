@@ -62,6 +62,46 @@ struct MirroredTerminalKeyTests {
     #expect(key?.modifiers == [.control])
   }
 
+  @Test func commandBackspaceIsAllowed() throws {
+    let event = NSEvent.keyEvent(
+      with: .keyDown,
+      location: .zero,
+      modifierFlags: [.command],
+      timestamp: 0,
+      windowNumber: 0,
+      context: nil,
+      characters: "\u{7F}",
+      charactersIgnoringModifiers: "\u{7F}",
+      isARepeat: false,
+      keyCode: 51
+    )
+
+    let key = MirroredTerminalKey(event: try #require(event))
+
+    #expect(key?.kind == .backspace)
+    #expect(key?.modifiers == [.command])
+  }
+
+  @Test func commandArrowIsAllowed() throws {
+    let event = NSEvent.keyEvent(
+      with: .keyDown,
+      location: .zero,
+      modifierFlags: [.command],
+      timestamp: 0,
+      windowNumber: 0,
+      context: nil,
+      characters: "",
+      charactersIgnoringModifiers: "",
+      isARepeat: false,
+      keyCode: 124
+    )
+
+    let key = MirroredTerminalKey(event: try #require(event))
+
+    #expect(key?.kind == .arrowRight)
+    #expect(key?.modifiers == [.command])
+  }
+
   @Test func plainTextEventDoesNotNormalizeAsMirroredKey() throws {
     let event = NSEvent.keyEvent(
       with: .keyDown,
