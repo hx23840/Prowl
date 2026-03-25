@@ -94,6 +94,27 @@ struct CanvasSelectionStateTests {
     #expect(state.selectedTabIDs == [tab1, tab2])
   }
 
+  @Test func selectAllSelectsEveryTabAndKeepsExistingPrimary() {
+    var state = CanvasSelectionState()
+    state.focusSingle(tab2)
+
+    state.selectAll([tab1, tab2, tab3])
+
+    #expect(state.selectedTabIDs == [tab1, tab2, tab3])
+    #expect(state.primaryTabID == tab2)
+    #expect(state.selectionOrder.last == tab2)
+    #expect(state.mode == .idle)
+  }
+
+  @Test func selectAllFromEmptyPicksLastTab() {
+    var state = CanvasSelectionState()
+
+    state.selectAll([tab1, tab2, tab3])
+
+    #expect(state.selectedTabIDs == [tab1, tab2, tab3])
+    #expect(state.primaryTabID == tab3)
+  }
+
   @Test func pruneDropsMissingTabsAndPreservesNewestVisiblePrimary() {
     var state = CanvasSelectionState()
     state.toggleSelection(tab1)

@@ -153,6 +153,11 @@ struct CanvasView: View {
       clearSelection(states: terminalManager.activeWorktreeStates)
       return .handled
     }
+    .onKeyPress("a", phases: .down) { keyPress in
+      guard keyPress.modifiers == [.command, .option] else { return .ignored }
+      selectAllCards()
+      return .handled
+    }
     .task { activateCanvas() }
     .onDisappear { deactivateCanvas() }
   }
@@ -408,6 +413,16 @@ struct CanvasView: View {
       }
 
       Button {
+        selectAllCards()
+      } label: {
+        Image(systemName: "checkmark.rectangle.stack")
+          .font(.body)
+          .accessibilityLabel("Select All")
+      }
+      .buttonStyle(.bordered)
+      .help("Select all cards for broadcast (⌘⌥A)")
+
+      Button {
         withAnimation(.easeInOut(duration: 0.2)) {
           arrangeCards()
           fitToView(canvasSize: viewportSize)
@@ -470,6 +485,15 @@ struct CanvasView: View {
     for surface in surfaces {
       surface.needsLayout = true
       surface.needsDisplay = true
+    }
+  }
+
+  private func selectAllCards() {
+    let activeStates = terminalManager.activeWorktreeStates
+    let allTabIDs = collectVisibleTabIDs(from: activeStates)
+    guard allTabIDs.count > 1 else { return }
+    mutateSelection(states: activeStates) { state in
+      state.selectAll(allTabIDs)
     }
   }
 

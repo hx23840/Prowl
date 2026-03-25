@@ -54,6 +54,20 @@ struct CanvasSelectionState: Equatable {
     selectionOrder.append(tabID)
   }
 
+  mutating func selectAll(_ tabIDs: [TerminalTabID]) {
+    guard !tabIDs.isEmpty else { return }
+    mode = .idle
+    selectedTabIDs = Set(tabIDs)
+    selectionOrder = tabIDs
+    if let primaryTabID, selectedTabIDs.contains(primaryTabID) {
+      // Keep current primary if it's still in the set.
+      selectionOrder.removeAll { $0 == primaryTabID }
+      selectionOrder.append(primaryTabID)
+    } else {
+      primaryTabID = tabIDs.last
+    }
+  }
+
   mutating func beginBroadcastInteractionIfNeeded() {
     guard isSelecting, selectedTabIDs.count > 1 else { return }
     mode = .idle
