@@ -82,15 +82,15 @@ final class WorktreeTerminalState {
 
   @discardableResult
   func insertCommittedText(_ text: String, in tabId: TerminalTabID) -> Bool {
-    guard let surface = surfaceView(for: tabId) else { return false }
-    surface.insertCommittedTextForBroadcast(text)
+    guard let terminal = surfaceView(for: tabId)?.terminalView else { return false }
+    terminal.insertCommittedTextForBroadcast(text)
     return true
   }
 
   @discardableResult
   func applyMirroredKey(_ key: MirroredTerminalKey, in tabId: TerminalTabID) -> Bool {
-    guard let surface = surfaceView(for: tabId) else { return false }
-    return surface.applyMirroredKeyForBroadcast(key)
+    guard let terminal = surfaceView(for: tabId)?.terminalView else { return false }
+    return terminal.applyMirroredKeyForBroadcast(key)
   }
 
   var taskStatus: WorktreeTaskStatus {
@@ -762,7 +762,7 @@ final class WorktreeTerminalState {
   func createTerminalSplitNextToFocused(direction: SplitTree<SurfaceView>.NewDirection = .right) {
     guard let selectedTabId = tabManager.selectedTabId,
       let focusedId = focusedSurfaceIdByTab[selectedTabId],
-      var tree = trees[selectedTabId],
+      let tree = trees[selectedTabId],
       let targetSurface = surfaces[focusedId]
     else { return }
     let newSurface = createSurface(

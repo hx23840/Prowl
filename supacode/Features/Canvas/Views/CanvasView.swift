@@ -572,14 +572,14 @@ struct CanvasView: View {
 
     ownerState.tabManager.selectTab(newTabID)
     terminalManager.canvasFocusedWorktreeID = ownerState.worktreeID
-    surfaceView.focusDidChange(true)
-    surfaceView.requestFocus()
+    surfaceView.terminalView?.focusDidChange(true)
+    surfaceView.terminalView?.requestFocus()
   }
 
   private func unfocusTab(_ tabID: TerminalTabID, states: [WorktreeTerminalState]) {
     guard let state = states.first(where: { $0.surfaceView(for: tabID) != nil }) else { return }
     for surface in state.splitTree(for: tabID).leaves() {
-      surface.focusDidChange(false)
+      surface.terminalView?.focusDidChange(false)
     }
   }
 
@@ -596,13 +596,14 @@ struct CanvasView: View {
     let selectedTabIDs = selectionState.selectedTabIDs
     let beginBroadcast = { selectionState.beginBroadcastInteractionIfNeeded() }
     for primarySurface in primaryState.splitTree(for: primaryTabID).leaves() {
-      primarySurface.onCommittedText = { [terminalManager, selectedTabIDs, primaryTabID, beginBroadcast] text in
+      guard let terminal = primarySurface.terminalView else { continue }
+      terminal.onCommittedText = { [terminalManager, selectedTabIDs, primaryTabID, beginBroadcast] text in
         Task { @MainActor in
           beginBroadcast()
           terminalManager.broadcastCommittedText(text, from: primaryTabID, to: selectedTabIDs)
         }
       }
-      primarySurface.onMirroredKey = {
+      terminal.onMirroredKey = {
         [terminalManager, selectedTabIDs, primaryTabID, beginBroadcast] mirroredKey in
         Task { @MainActor in
           beginBroadcast()
@@ -616,8 +617,8 @@ struct CanvasView: View {
     for state in states {
       for tab in state.tabManager.tabs {
         for surface in state.splitTree(for: tab.id).leaves() {
-          surface.onCommittedText = nil
-          surface.onMirroredKey = nil
+          surface.terminalView?.onCommittedText = nil
+          surface.terminalView?.onMirroredKey = nil
         }
       }
     }

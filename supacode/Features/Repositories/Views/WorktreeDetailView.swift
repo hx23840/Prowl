@@ -104,6 +104,7 @@ struct WorktreeDetailView: View {
           onSelectNotification: selectToolbarNotification,
           onDismissAllNotifications: { dismissAllToolbarNotifications(in: notificationGroups) },
           onShowGitLog: {
+            guard let selectedWorktree else { return }
             GitLogWindowManager.shared.show(
               worktreeURL: selectedWorktree.workingDirectory,
               branchName: selectedWorktree.name,
