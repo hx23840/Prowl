@@ -36,7 +36,7 @@ nonisolated struct OnevcatCustomCommand: Codable, Equatable, Sendable, Identifia
   var systemImage: String
   var command: String
   var execution: OnevcatCustomCommandExecution
-  var shortcut: OnevcatCustomShortcut?
+  var shortcut: UserCustomShortcut?
 
   init(
     id: String = UUID().uuidString,
@@ -44,7 +44,7 @@ nonisolated struct OnevcatCustomCommand: Codable, Equatable, Sendable, Identifia
     systemImage: String,
     command: String,
     execution: OnevcatCustomCommandExecution,
-    shortcut: OnevcatCustomShortcut?
+    shortcut: UserCustomShortcut?
   ) {
     self.id = id
     self.title = title
@@ -112,18 +112,18 @@ nonisolated enum OnevcatCustomCommandExecution: String, Codable, CaseIterable, I
   }
 }
 
-nonisolated struct OnevcatCustomShortcut: Codable, Equatable, Sendable {
+nonisolated struct UserCustomShortcut: Codable, Equatable, Sendable {
   var key: String
-  var modifiers: OnevcatCustomShortcutModifiers
+  var modifiers: UserCustomShortcutModifiers
 
-  init(key: String, modifiers: OnevcatCustomShortcutModifiers) {
+  init(key: String, modifiers: UserCustomShortcutModifiers) {
     self.key = key
     self.modifiers = modifiers
   }
 
-  func normalized() -> OnevcatCustomShortcut {
+  func normalized() -> UserCustomShortcut {
     let scalar = key.trimmingCharacters(in: .whitespacesAndNewlines).first
-    return OnevcatCustomShortcut(
+    return UserCustomShortcut(
       key: scalar.map { String($0).lowercased() } ?? "",
       modifiers: modifiers
     )
@@ -145,7 +145,7 @@ nonisolated struct OnevcatCustomShortcut: Codable, Equatable, Sendable {
   }
 }
 
-nonisolated struct OnevcatCustomShortcutModifiers: Codable, Equatable, Sendable {
+nonisolated struct UserCustomShortcutModifiers: Codable, Equatable, Sendable {
   var command: Bool
   var shift: Bool
   var option: Bool
@@ -162,3 +162,9 @@ nonisolated struct OnevcatCustomShortcutModifiers: Codable, Equatable, Sendable 
     !command && !shift && !option && !control
   }
 }
+
+@available(*, deprecated, renamed: "UserCustomShortcut")
+typealias OnevcatCustomShortcut = UserCustomShortcut
+
+@available(*, deprecated, renamed: "UserCustomShortcutModifiers")
+typealias OnevcatCustomShortcutModifiers = UserCustomShortcutModifiers

@@ -38,9 +38,9 @@ struct OnevcatRepositorySettingsKeyTests {
           systemImage: "checkmark.circle",
           command: "swift test",
           execution: .shellScript,
-          shortcut: OnevcatCustomShortcut(
+          shortcut: UserCustomShortcut(
             key: "u",
-            modifiers: OnevcatCustomShortcutModifiers(command: true)
+            modifiers: UserCustomShortcutModifiers(command: true)
           )
         ),
       ]
@@ -73,9 +73,9 @@ struct OnevcatRepositorySettingsKeyTests {
           systemImage: "terminal",
           command: "echo legacy",
           execution: .shellScript,
-          shortcut: OnevcatCustomShortcut(
+          shortcut: UserCustomShortcut(
             key: "u",
-            modifiers: OnevcatCustomShortcutModifiers(command: true)
+            modifiers: UserCustomShortcutModifiers(command: true)
           )
         ),
       ]

@@ -140,9 +140,9 @@ struct AppFeaturePlainFolderTerminalTests {
           systemImage: "hammer",
           command: "swift build",
           execution: .shellScript,
-          shortcut: OnevcatCustomShortcut(
+          shortcut: UserCustomShortcut(
             key: "b",
-            modifiers: OnevcatCustomShortcutModifiers(command: true)
+            modifiers: UserCustomShortcutModifiers(command: true)
           )
         ),
       ]

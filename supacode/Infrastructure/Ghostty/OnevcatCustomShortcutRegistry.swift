@@ -4,11 +4,11 @@ import AppKit
 final class OnevcatCustomShortcutRegistry {
   static let shared = OnevcatCustomShortcutRegistry()
 
-  private var shortcuts: [OnevcatCustomShortcut] = []
+  private var shortcuts: [UserCustomShortcut] = []
 
   private init() {}
 
-  func setShortcuts(_ shortcuts: [OnevcatCustomShortcut]) {
+  func setShortcuts(_ shortcuts: [UserCustomShortcut]) {
     self.shortcuts = shortcuts.compactMap { shortcut in
       let normalized = shortcut.normalized()
       return normalized.isValid ? normalized : nil
@@ -20,7 +20,7 @@ final class OnevcatCustomShortcutRegistry {
   }
 
   #if DEBUG
-    var registeredShortcutsForTesting: [OnevcatCustomShortcut] {
+    var registeredShortcutsForTesting: [UserCustomShortcut] {
       shortcuts
     }
   #endif

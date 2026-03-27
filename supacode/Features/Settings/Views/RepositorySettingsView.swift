@@ -371,9 +371,9 @@ private struct OnevcatCustomCommandCard: View {
         if enabled {
           command.shortcut =
             command.shortcut
-            ?? OnevcatCustomShortcut(
+            ?? UserCustomShortcut(
               key: "",
-              modifiers: OnevcatCustomShortcutModifiers()
+              modifiers: UserCustomShortcutModifiers()
             )
         } else {
           command.shortcut = nil
@@ -382,7 +382,7 @@ private struct OnevcatCustomCommandCard: View {
     )
   }
 
-  private func shortcutKeyBinding(_ shortcut: Binding<OnevcatCustomShortcut>) -> Binding<String> {
+  private func shortcutKeyBinding(_ shortcut: Binding<UserCustomShortcut>) -> Binding<String> {
     Binding(
       get: { shortcut.wrappedValue.key },
       set: { value in

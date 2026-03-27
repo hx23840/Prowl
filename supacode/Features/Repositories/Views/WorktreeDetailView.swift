@@ -733,9 +733,9 @@ private struct WorktreeToolbarPreview: View {
           systemImage: "checkmark.circle.fill",
           command: "swift test",
           execution: .shellScript,
-          shortcut: OnevcatCustomShortcut(
+          shortcut: UserCustomShortcut(
             key: "u",
-            modifiers: OnevcatCustomShortcutModifiers()
+            modifiers: UserCustomShortcutModifiers()
           )
         ),
       ]

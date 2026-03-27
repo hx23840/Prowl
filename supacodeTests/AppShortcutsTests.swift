@@ -89,9 +89,9 @@ struct AppShortcutsTests {
         systemImage: "hammer",
         command: "swift build",
         execution: .shellScript,
-        shortcut: OnevcatCustomShortcut(
+        shortcut: UserCustomShortcut(
           key: "s",
-          modifiers: OnevcatCustomShortcutModifiers(command: true, control: true)
+          modifiers: UserCustomShortcutModifiers(command: true, control: true)
         )
       ),
       OnevcatCustomCommand(
@@ -99,9 +99,9 @@ struct AppShortcutsTests {
         systemImage: "rocket",
         command: "make release",
         execution: .shellScript,
-        shortcut: OnevcatCustomShortcut(
+        shortcut: UserCustomShortcut(
           key: "k",
-          modifiers: OnevcatCustomShortcutModifiers(command: true)
+          modifiers: UserCustomShortcutModifiers(command: true)
         )
       ),
     ]
@@ -111,7 +111,7 @@ struct AppShortcutsTests {
         "\($0.commandTitle)|\($0.commandShortcutDisplay)|\($0.appActionTitle)|\($0.appShortcutDisplay)"
       },
       [
-        "Build|⌘⌃S|Toggle Left Sidebar|⌘⌃S",
+        "Build|⌘⌃S|Toggle Left Sidebar|⌘⌃S"
       ]
     )
   }

@@ -627,7 +627,7 @@ struct AppFeature {
         state.selectedCustomCommands = OnevcatRepositorySettings.normalizedCommands(settings.customCommands)
           .filter(\.hasRunnableCommand)
         let userOverrideConflicts = AppShortcuts.userOverrideConflicts(in: state.selectedCustomCommands)
-        let shortcuts: [OnevcatCustomShortcut] = state.selectedCustomCommands.compactMap { command in
+        let shortcuts: [UserCustomShortcut] = state.selectedCustomCommands.compactMap { command in
           guard let shortcut = command.shortcut, shortcut.isValid else { return nil }
           return shortcut.normalized()
         }

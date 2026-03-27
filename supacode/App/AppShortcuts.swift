@@ -173,7 +173,7 @@ enum AppShortcuts {
   }
 
   private static func matchingReservedBinding(
-    for shortcut: OnevcatCustomShortcut
+    for shortcut: UserCustomShortcut
   ) -> ReservedCustomCommandBinding? {
     guard let key = shortcut.normalizedConflictKey else { return nil }
     let modifiers = shortcut.modifiers.eventModifiers
@@ -223,8 +223,8 @@ enum AppShortcuts {
   ]
 }
 
-private extension OnevcatCustomShortcut {
-  var normalizedConflictKey: String? {
+extension UserCustomShortcut {
+  fileprivate var normalizedConflictKey: String? {
     let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     guard normalized.count == 1 else { return nil }
     return normalized
