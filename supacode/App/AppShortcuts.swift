@@ -170,41 +170,186 @@ enum AppShortcuts {
   ]
 
   static let bindings: [Binding] = [
-    .init(id: "new_worktree", title: "New Worktree", scope: .configurableAppAction, shortcut: newWorktree),
-    .init(id: "open_settings", title: "Open Settings", scope: .configurableAppAction, shortcut: openSettings),
-    .init(id: "open_worktree", title: "Open Worktree", scope: .configurableAppAction, shortcut: openFinder),
-    .init(id: "copy_path", title: "Copy Path", scope: .configurableAppAction, shortcut: copyPath),
-    .init(id: "open_repository", title: "Open Repository", scope: .configurableAppAction, shortcut: openRepository),
-    .init(id: "open_pull_request", title: "Open Pull Request", scope: .configurableAppAction, shortcut: openPullRequest),
-    .init(id: "toggle_left_sidebar", title: "Toggle Left Sidebar", scope: .configurableAppAction, shortcut: toggleLeftSidebar),
-    .init(id: "refresh_worktrees", title: "Refresh Worktrees", scope: .configurableAppAction, shortcut: refreshWorktrees),
-    .init(id: "run_script", title: "Run Script", scope: .configurableAppAction, shortcut: runScript),
-    .init(id: "stop_script", title: "Stop Script", scope: .configurableAppAction, shortcut: stopRunScript),
-    .init(id: "check_for_updates", title: "Check for Updates", scope: .configurableAppAction, shortcut: checkForUpdates),
-    .init(id: "show_diff", title: "Show Diff", scope: .configurableAppAction, shortcut: showDiff),
-    .init(id: "toggle_canvas", title: "Toggle Canvas", scope: .configurableAppAction, shortcut: toggleCanvas),
-    .init(id: "archived_worktrees", title: "Archived Worktrees", scope: .configurableAppAction, shortcut: archivedWorktrees),
-    .init(id: "select_next_worktree", title: "Select Next Worktree", scope: .configurableAppAction, shortcut: selectNextWorktree),
+    .init(
+      id: "new_worktree",
+      title: "New Worktree",
+      scope: .configurableAppAction,
+      shortcut: newWorktree
+    ),
+    .init(
+      id: "open_settings",
+      title: "Open Settings",
+      scope: .configurableAppAction,
+      shortcut: openSettings
+    ),
+    .init(
+      id: "open_worktree",
+      title: "Open Worktree",
+      scope: .configurableAppAction,
+      shortcut: openFinder
+    ),
+    .init(
+      id: "copy_path",
+      title: "Copy Path",
+      scope: .configurableAppAction,
+      shortcut: copyPath
+    ),
+    .init(
+      id: "open_repository",
+      title: "Open Repository",
+      scope: .configurableAppAction,
+      shortcut: openRepository
+    ),
+    .init(
+      id: "open_pull_request",
+      title: "Open Pull Request",
+      scope: .configurableAppAction,
+      shortcut: openPullRequest
+    ),
+    .init(
+      id: "toggle_left_sidebar",
+      title: "Toggle Left Sidebar",
+      scope: .configurableAppAction,
+      shortcut: toggleLeftSidebar
+    ),
+    .init(
+      id: "refresh_worktrees",
+      title: "Refresh Worktrees",
+      scope: .configurableAppAction,
+      shortcut: refreshWorktrees
+    ),
+    .init(
+      id: "run_script",
+      title: "Run Script",
+      scope: .configurableAppAction,
+      shortcut: runScript
+    ),
+    .init(
+      id: "stop_script",
+      title: "Stop Script",
+      scope: .configurableAppAction,
+      shortcut: stopRunScript
+    ),
+    .init(
+      id: "check_for_updates",
+      title: "Check for Updates",
+      scope: .configurableAppAction,
+      shortcut: checkForUpdates
+    ),
+    .init(
+      id: "show_diff",
+      title: "Show Diff",
+      scope: .configurableAppAction,
+      shortcut: showDiff
+    ),
+    .init(
+      id: "toggle_canvas",
+      title: "Toggle Canvas",
+      scope: .configurableAppAction,
+      shortcut: toggleCanvas
+    ),
+    .init(
+      id: "archived_worktrees",
+      title: "Archived Worktrees",
+      scope: .configurableAppAction,
+      shortcut: archivedWorktrees
+    ),
+    .init(
+      id: "select_next_worktree",
+      title: "Select Next Worktree",
+      scope: .configurableAppAction,
+      shortcut: selectNextWorktree
+    ),
     .init(
       id: "select_previous_worktree",
       title: "Select Previous Worktree",
       scope: .configurableAppAction,
       shortcut: selectPreviousWorktree
     ),
-    .init(id: "select_worktree_1", title: "Select Worktree 1", scope: .configurableAppAction, shortcut: selectWorktree1),
-    .init(id: "select_worktree_2", title: "Select Worktree 2", scope: .configurableAppAction, shortcut: selectWorktree2),
-    .init(id: "select_worktree_3", title: "Select Worktree 3", scope: .configurableAppAction, shortcut: selectWorktree3),
-    .init(id: "select_worktree_4", title: "Select Worktree 4", scope: .configurableAppAction, shortcut: selectWorktree4),
-    .init(id: "select_worktree_5", title: "Select Worktree 5", scope: .configurableAppAction, shortcut: selectWorktree5),
-    .init(id: "select_worktree_6", title: "Select Worktree 6", scope: .configurableAppAction, shortcut: selectWorktree6),
-    .init(id: "select_worktree_7", title: "Select Worktree 7", scope: .configurableAppAction, shortcut: selectWorktree7),
-    .init(id: "select_worktree_8", title: "Select Worktree 8", scope: .configurableAppAction, shortcut: selectWorktree8),
-    .init(id: "select_worktree_9", title: "Select Worktree 9", scope: .configurableAppAction, shortcut: selectWorktree9),
-    .init(id: "select_worktree_0", title: "Select Worktree 0", scope: .configurableAppAction, shortcut: selectWorktree0),
-    .init(id: "command_palette", title: "Command Palette", scope: .systemFixedAppAction, shortcut: commandPalette),
-    .init(id: "minimize_window", title: "Minimize Window", scope: .systemFixedAppAction, shortcut: minimizeWindow),
-    .init(id: "quit_application", title: "Quit Application", scope: .systemFixedAppAction, shortcut: quitApplication),
-    .init(id: "rename_branch", title: "Rename Branch", scope: .localInteraction, shortcut: renameBranch),
+    .init(
+      id: "select_worktree_1",
+      title: "Select Worktree 1",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree1
+    ),
+    .init(
+      id: "select_worktree_2",
+      title: "Select Worktree 2",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree2
+    ),
+    .init(
+      id: "select_worktree_3",
+      title: "Select Worktree 3",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree3
+    ),
+    .init(
+      id: "select_worktree_4",
+      title: "Select Worktree 4",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree4
+    ),
+    .init(
+      id: "select_worktree_5",
+      title: "Select Worktree 5",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree5
+    ),
+    .init(
+      id: "select_worktree_6",
+      title: "Select Worktree 6",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree6
+    ),
+    .init(
+      id: "select_worktree_7",
+      title: "Select Worktree 7",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree7
+    ),
+    .init(
+      id: "select_worktree_8",
+      title: "Select Worktree 8",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree8
+    ),
+    .init(
+      id: "select_worktree_9",
+      title: "Select Worktree 9",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree9
+    ),
+    .init(
+      id: "select_worktree_0",
+      title: "Select Worktree 0",
+      scope: .configurableAppAction,
+      shortcut: selectWorktree0
+    ),
+    .init(
+      id: "command_palette",
+      title: "Command Palette",
+      scope: .systemFixedAppAction,
+      shortcut: commandPalette
+    ),
+    .init(
+      id: "minimize_window",
+      title: "Minimize Window",
+      scope: .systemFixedAppAction,
+      shortcut: minimizeWindow
+    ),
+    .init(
+      id: "quit_application",
+      title: "Quit Application",
+      scope: .systemFixedAppAction,
+      shortcut: quitApplication
+    ),
+    .init(
+      id: "rename_branch",
+      title: "Rename Branch",
+      scope: .localInteraction,
+      shortcut: renameBranch
+    ),
     .init(
       id: "select_all_canvas_cards",
       title: "Select All Canvas Cards",
