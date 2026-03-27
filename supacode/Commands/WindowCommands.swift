@@ -75,33 +75,25 @@ struct WindowCommands: Commands {
         Button("Select Pane Above") {
           selectTerminalPaneAboveAction?()
         }
-        .modifier(
-          KeyboardShortcutModifier(shortcut: ghosttyShortcuts.keyboardShortcut(for: "goto_split:up"))
-        )
+        .keyboardShortcut(.upArrow, modifiers: [.command, .option])
         .disabled(selectTerminalPaneAboveAction == nil)
 
         Button("Select Pane Below") {
           selectTerminalPaneBelowAction?()
         }
-        .modifier(
-          KeyboardShortcutModifier(shortcut: ghosttyShortcuts.keyboardShortcut(for: "goto_split:down"))
-        )
+        .keyboardShortcut(.downArrow, modifiers: [.command, .option])
         .disabled(selectTerminalPaneBelowAction == nil)
 
         Button("Select Pane Left") {
           selectTerminalPaneLeftAction?()
         }
-        .modifier(
-          KeyboardShortcutModifier(shortcut: ghosttyShortcuts.keyboardShortcut(for: "goto_split:left"))
-        )
+        .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
         .disabled(selectTerminalPaneLeftAction == nil)
 
         Button("Select Pane Right") {
           selectTerminalPaneRightAction?()
         }
-        .modifier(
-          KeyboardShortcutModifier(shortcut: ghosttyShortcuts.keyboardShortcut(for: "goto_split:right"))
-        )
+        .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
         .disabled(selectTerminalPaneRightAction == nil)
       }
     }
