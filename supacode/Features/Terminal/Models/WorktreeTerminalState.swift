@@ -497,8 +497,7 @@ final class WorktreeTerminalState {
     }
   }
 
-  func performSplitOperation(_ operation: TerminalSplitTreeView.Operation, in tabId: TerminalTabID)
-  {
+  func performSplitOperation(_ operation: TerminalSplitTreeView.Operation, in tabId: TerminalTabID) {
     guard var tree = trees[tabId] else { return }
 
     switch operation {
@@ -651,13 +650,25 @@ final class WorktreeTerminalState {
     context: ghostty_surface_context_e
   ) -> GhosttySurfaceView {
     let inherited = inheritedSurfaceConfig(fromSurfaceId: inheritingFromSurfaceId, context: context)
+    let resolvedFontSize = Self.resolvedFontSizeForNewSurface(
+      defaultFontSize: defaultFontSize,
+      inheritedFontSize: inherited.fontSize,
+      context: context
+    )
     let view = GhosttySurfaceView(
       runtime: runtime,
       workingDirectory: inherited.workingDirectory ?? worktree.workingDirectory,
       initialInput: initialInput,
-      fontSize: inherited.fontSize ?? defaultFontSize,
+      fontSize: resolvedFontSize,
       context: context
     )
+    configureBridgeCallbacks(for: view, tabId: tabId)
+    configureSurfaceCallbacks(for: view, tabId: tabId)
+    surfaces[view.id] = view
+    return view
+  }
+
+  private func configureBridgeCallbacks(for view: GhosttySurfaceView, tabId: TerminalTabID) {
     view.bridge.onTitleChange = { [weak self, weak view] title in
       guard let self, let view else { return }
       if self.focusedSurfaceIdByTab[tabId] == view.id {
@@ -694,6 +705,10 @@ final class WorktreeTerminalState {
       guard let self, let view else { return }
       self.handleCellSizeChange(forSurfaceID: view.id)
     }
+    view.bridge.onConfigChange = { [weak self, weak view] in
+      guard let self, let view else { return }
+      self.handleCellSizeChange(forSurfaceID: view.id)
+    }
     view.bridge.onDesktopNotification = { [weak self, weak view] title, body in
       guard let self, let view else { return }
       self.appendNotification(title: title, body: body, surfaceId: view.id)
@@ -710,6 +725,9 @@ final class WorktreeTerminalState {
       guard let self else { return }
       self.handlePromptTitle(promptType, tabId: tabId)
     }
+  }
+
+  private func configureSurfaceCallbacks(for view: GhosttySurfaceView, tabId: TerminalTabID) {
     view.onFocusChange = { [weak self, weak view] focused in
       guard let self, let view, focused else { return }
       self.focusedSurfaceIdByTab[tabId] = view.id
@@ -723,8 +741,21 @@ final class WorktreeTerminalState {
       self.recordKeyInput(forSurfaceID: view.id)
       self.markNotificationsRead(forSurfaceID: view.id)
     }
-    surfaces[view.id] = view
-    return view
+    view.onResetFontSizeShortcut = { [weak self] in
+      guard let self else { return }
+      self.onFontSizeChanged?(nil)
+    }
+  }
+
+  static func resolvedFontSizeForNewSurface(
+    defaultFontSize: Float32?,
+    inheritedFontSize: Float32?,
+    context: ghostty_surface_context_e
+  ) -> Float32? {
+    if context == GHOSTTY_SURFACE_CONTEXT_SPLIT {
+      return inheritedFontSize ?? defaultFontSize
+    }
+    return defaultFontSize
   }
 
   private struct InheritedSurfaceConfig: Equatable {
