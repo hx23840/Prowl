@@ -63,12 +63,21 @@ install-dev-build: build-app # install dev build to /Applications
 		echo "error: failed to resolve app path from build settings"; \
 		exit 1; \
 	fi; \
+	if [ "$$product" != "$$(basename "$$product")" ]; then \
+		echo "error: invalid product name (contains path separators): $$product"; \
+		exit 1; \
+	fi; \
 	if [[ "$$product" != *.app ]]; then \
 		echo "error: unexpected product name: $$product"; \
 		exit 1; \
 	fi; \
 	src="$$build_dir/$$product"; \
 	dst="/Applications/$$product"; \
+	dst_parent="$$(cd "$$(dirname "$$dst")" && pwd -P)"; \
+	if [ "$$dst_parent" != "/Applications" ]; then \
+		echo "error: refusing to install outside /Applications: $$dst"; \
+		exit 1; \
+	fi; \
 	if [ "$$src" = "/" ] || [ "$$dst" = "/Applications" ] || [ "$$dst" = "/Applications/" ]; then \
 		echo "error: unsafe install path (src=$$src, dst=$$dst)"; \
 		exit 1; \
