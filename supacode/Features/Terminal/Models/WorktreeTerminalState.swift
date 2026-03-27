@@ -497,8 +497,7 @@ final class WorktreeTerminalState {
     }
   }
 
-  func performSplitOperation(_ operation: TerminalSplitTreeView.Operation, in tabId: TerminalTabID)
-  {
+  func performSplitOperation(_ operation: TerminalSplitTreeView.Operation, in tabId: TerminalTabID) {
     guard var tree = trees[tabId] else { return }
 
     switch operation {
@@ -663,6 +662,13 @@ final class WorktreeTerminalState {
       fontSize: resolvedFontSize,
       context: context
     )
+    configureBridgeCallbacks(for: view, tabId: tabId)
+    configureSurfaceCallbacks(for: view, tabId: tabId)
+    surfaces[view.id] = view
+    return view
+  }
+
+  private func configureBridgeCallbacks(for view: GhosttySurfaceView, tabId: TerminalTabID) {
     view.bridge.onTitleChange = { [weak self, weak view] title in
       guard let self, let view else { return }
       if self.focusedSurfaceIdByTab[tabId] == view.id {
@@ -719,6 +725,9 @@ final class WorktreeTerminalState {
       guard let self else { return }
       self.handlePromptTitle(promptType, tabId: tabId)
     }
+  }
+
+  private func configureSurfaceCallbacks(for view: GhosttySurfaceView, tabId: TerminalTabID) {
     view.onFocusChange = { [weak self, weak view] focused in
       guard let self, let view, focused else { return }
       self.focusedSurfaceIdByTab[tabId] = view.id
@@ -736,8 +745,6 @@ final class WorktreeTerminalState {
       guard let self else { return }
       self.onFontSizeChanged?(nil)
     }
-    surfaces[view.id] = view
-    return view
   }
 
   static func resolvedFontSizeForNewSurface(
