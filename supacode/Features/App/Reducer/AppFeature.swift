@@ -787,6 +787,9 @@ struct AppFeature {
       case .terminalEvent(.setupScriptConsumed(let worktreeID)):
         return .send(.repositories(.consumeSetupScript(worktreeID)))
 
+      case .terminalEvent(.fontSizeChanged(let fontSize)):
+        return .send(.settings(.setTerminalFontSize(fontSize)))
+
       case .terminalEvent:
         return .none
       }

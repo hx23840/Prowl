@@ -24,6 +24,7 @@ struct SettingsFeature {
     var automaticallyArchiveMergedWorktrees: Bool
     var promptForWorktreeCreation: Bool
     var defaultWorktreeBaseDirectoryPath: String
+    var terminalFontSize: Float32?
     var selection: SettingsSection? = .general
     var repositorySettings: RepositorySettingsFeature.State?
     @Presents var alert: AlertState<Alert>?
@@ -50,6 +51,7 @@ struct SettingsFeature {
       promptForWorktreeCreation = settings.promptForWorktreeCreation
       defaultWorktreeBaseDirectoryPath =
         SupacodePaths.normalizedWorktreeBaseDirectoryPath(settings.defaultWorktreeBaseDirectoryPath) ?? ""
+      terminalFontSize = settings.terminalFontSize
     }
 
     var globalSettings: GlobalSettings {
@@ -74,7 +76,8 @@ struct SettingsFeature {
         promptForWorktreeCreation: promptForWorktreeCreation,
         defaultWorktreeBaseDirectoryPath: SupacodePaths.normalizedWorktreeBaseDirectoryPath(
           defaultWorktreeBaseDirectoryPath
-        )
+        ),
+        terminalFontSize: terminalFontSize
       )
     }
   }
@@ -85,6 +88,7 @@ struct SettingsFeature {
     case setSelection(SettingsSection?)
     case setSystemNotificationsEnabled(Bool)
     case setCommandFinishedNotificationThreshold(String)
+    case setTerminalFontSize(Float32?)
     case showNotificationPermissionAlert(errorMessage: String?)
     case repositorySettings(RepositorySettingsFeature.Action)
     case alert(PresentationAction<Alert>)
@@ -149,6 +153,7 @@ struct SettingsFeature {
         state.automaticallyArchiveMergedWorktrees = normalizedSettings.automaticallyArchiveMergedWorktrees
         state.promptForWorktreeCreation = normalizedSettings.promptForWorktreeCreation
         state.defaultWorktreeBaseDirectoryPath = normalizedSettings.defaultWorktreeBaseDirectoryPath ?? ""
+        state.terminalFontSize = normalizedSettings.terminalFontSize
         state.repositorySettings?.globalDefaultWorktreeBaseDirectoryPath =
           normalizedSettings.defaultWorktreeBaseDirectoryPath
         return .send(.delegate(.settingsChanged(normalizedSettings)))
@@ -174,6 +179,11 @@ struct SettingsFeature {
         state.repositorySettings?.globalDefaultWorktreeBaseDirectoryPath =
           defaultWorktreeBaseDirectoryPath
         return persist(state)
+
+      case .setTerminalFontSize(let fontSize):
+        guard state.terminalFontSize != fontSize else { return .none }
+        state.terminalFontSize = fontSize
+        return persist(state, captureAnalytics: false)
 
       case .showNotificationPermissionAlert(let errorMessage):
         let message: String
@@ -227,11 +237,11 @@ struct SettingsFeature {
     }
   }
 
-  private func persist(_ state: State) -> Effect<Action> {
+  private func persist(_ state: State, captureAnalytics: Bool = true) -> Effect<Action> {
     let settings = state.globalSettings
     @Shared(.settingsFile) var settingsFile
     $settingsFile.withLock { $0.global = settings }
-    if settings.analyticsEnabled {
+    if captureAnalytics, settings.analyticsEnabled {
       analyticsClient.capture("settings_changed", nil)
     }
     return .send(.delegate(.settingsChanged(settings)))
