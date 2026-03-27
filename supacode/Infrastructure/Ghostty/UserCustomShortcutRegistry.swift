@@ -1,8 +1,8 @@
 import AppKit
 
 @MainActor
-final class OnevcatCustomShortcutRegistry {
-  static let shared = OnevcatCustomShortcutRegistry()
+final class UserCustomShortcutRegistry {
+  static let shared = UserCustomShortcutRegistry()
 
   private var shortcuts: [UserCustomShortcut] = []
 

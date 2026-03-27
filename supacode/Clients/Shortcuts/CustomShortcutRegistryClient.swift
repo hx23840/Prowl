@@ -7,7 +7,7 @@ struct CustomShortcutRegistryClient {
 extension CustomShortcutRegistryClient: DependencyKey {
   static let liveValue = Self(
     setShortcuts: { shortcuts in
-      OnevcatCustomShortcutRegistry.shared.setShortcuts(shortcuts)
+      UserCustomShortcutRegistry.shared.setShortcuts(shortcuts)
     }
   )
 
