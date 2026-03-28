@@ -16,6 +16,8 @@ final class GhosttySurfaceBridge {
   var onMoveTab: ((ghostty_action_move_tab_s) -> Bool)?
   var onCommandPaletteToggle: (() -> Bool)?
   var onProgressReport: ((ghostty_action_progress_report_state_e) -> Void)?
+  var onCellSizeChange: (() -> Void)?
+  var onConfigChange: (() -> Void)?
   var onDesktopNotification: ((String, String) -> Void)?
   var onCommandFinished: ((Int?, UInt64) -> Void)?
   var onOpenUrl: ((String) -> Void)?
@@ -383,6 +385,7 @@ final class GhosttySurfaceBridge {
     case GHOSTTY_ACTION_CELL_SIZE:
       let cell = action.action.cell_size
       surfaceView?.updateCellSize(width: cell.width, height: cell.height)
+      onCellSizeChange?()
       return true
 
     case GHOSTTY_ACTION_RESET_WINDOW_SIZE:
@@ -447,6 +450,7 @@ final class GhosttySurfaceBridge {
 
     case GHOSTTY_ACTION_CONFIG_CHANGE:
       state.configChangeCount += 1
+      onConfigChange?()
       return true
 
     case GHOSTTY_ACTION_OPEN_CONFIG:
