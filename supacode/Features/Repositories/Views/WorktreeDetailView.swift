@@ -790,7 +790,7 @@ private struct WorktreeToolbarPreview: View {
             key: "u",
             modifiers: UserCustomShortcutModifiers()
           )
-        )
+        ),
       ]
     )
     let observer = CommandKeyObserver()
