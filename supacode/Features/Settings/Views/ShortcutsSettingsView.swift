@@ -20,6 +20,7 @@ struct ShortcutsSettingsView: View {
   @State private var recorderMonitor: Any?
   @State private var invalidMessageByCommandID: [String: String] = [:]
   @State private var pendingConflict: ShortcutConflict?
+  @State private var pendingResetConflict: ResetConflict?
   @State private var pendingOverride: PendingOverride?
   @State private var focusedConflictCommandID: String?
   @State private var hoveredRecorderCommandID: String?
@@ -138,6 +139,20 @@ struct ShortcutsSettingsView: View {
           + "\n\nChoose Replace to keep the new binding and disable the conflicting one."
       )
     }
+    .alert(
+      "Reset Conflict",
+      isPresented: isResetConflictAlertPresented,
+      presenting: pendingResetConflict
+    ) { _ in
+      Button("Reset Related", role: .destructive) {
+        applyPendingResetConflict()
+      }
+      Button("Cancel", role: .cancel) {
+        clearPendingResetConflict()
+      }
+    } message: { conflict in
+      Text(resetConflictMessage(for: conflict))
+    }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 
@@ -175,7 +190,7 @@ struct ShortcutsSettingsView: View {
 
         if hasOverride {
           Button {
-            resetOverride(for: command.id)
+            requestResetOverride(for: command.id)
           } label: {
             Image(systemName: "arrow.counterclockwise")
               .font(.caption.weight(.semibold))
@@ -635,14 +650,73 @@ struct ShortcutsSettingsView: View {
     $store.keybindingUserOverrides.wrappedValue = overrides
   }
 
-  private func resetOverride(for commandID: String) {
+  private func requestResetOverride(for commandID: String) {
+    let plan = ShortcutResetPlanner.makePlan(
+      commandID: commandID,
+      schema: .appResolverSchema(),
+      userOverrides: store.keybindingUserOverrides
+    )
+
+    guard !plan.conflictingCommandIDs.isEmpty, let restoredBinding = plan.restoredBinding else {
+      applyResetOverrides(for: plan.commandIDsToReset)
+      return
+    }
+
+    let occupiedCommandTitle = commandTitle(for: plan.conflictingCommandIDs[0])
+    let cascadingTitles = plan.commandIDsToReset.dropFirst().map(commandTitle(for:))
+    pendingResetConflict = ResetConflict(
+      commandID: commandID,
+      commandTitle: commandTitle(for: commandID),
+      restoredBinding: restoredBinding,
+      occupiedCommandTitle: occupiedCommandTitle,
+      cascadingTitles: cascadingTitles,
+      commandIDsToReset: plan.commandIDsToReset
+    )
+  }
+
+  private func applyResetOverrides(for commandIDs: [String]) {
     var overrides = store.keybindingUserOverrides
-    overrides.overrides.removeValue(forKey: commandID)
+    for commandID in commandIDs {
+      overrides.overrides.removeValue(forKey: commandID)
+      invalidMessageByCommandID.removeValue(forKey: commandID)
+    }
     $store.keybindingUserOverrides.wrappedValue = overrides
-    invalidMessageByCommandID[commandID] = nil
-    if recordingCommandID == commandID {
+
+    if let recordingCommandID, commandIDs.contains(recordingCommandID) {
       stopRecording()
     }
+    if let focusedConflictCommandID, commandIDs.contains(focusedConflictCommandID) {
+      self.focusedConflictCommandID = nil
+    }
+    clearPendingResetConflict()
+  }
+
+  private func applyPendingResetConflict() {
+    guard let pendingResetConflict else {
+      return
+    }
+    applyResetOverrides(for: pendingResetConflict.commandIDsToReset)
+  }
+
+  private func clearPendingResetConflict() {
+    pendingResetConflict = nil
+  }
+
+  private func resetConflictMessage(for conflict: ResetConflict) -> String {
+    var message =
+      "Resetting “\(conflict.commandTitle)” restores \(conflict.restoredBinding.display), "
+      + "which is currently used by “\(conflict.occupiedCommandTitle)”."
+
+    if !conflict.cascadingTitles.isEmpty {
+      let cascadingList = conflict.cascadingTitles.joined(separator: " → ")
+      message += "\n\nReset Related will cascade reset: \(cascadingList)."
+    }
+
+    return message + "\n\nChoose Reset Related to continue, or Cancel."
+  }
+
+  private func commandTitle(for commandID: String) -> String {
+    editableCommands.first(where: { $0.id == commandID })?.title ?? commandID
   }
 
   private func resetOverrides(in group: ShortcutGroup) {
@@ -676,6 +750,17 @@ struct ShortcutsSettingsView: View {
       }
     )
   }
+
+  private var isResetConflictAlertPresented: Binding<Bool> {
+    Binding(
+      get: { pendingResetConflict != nil },
+      set: { shouldPresent in
+        if !shouldPresent {
+          clearPendingResetConflict()
+        }
+      }
+    )
+  }
 }
 
 private struct CommandSortKey: Comparable {
@@ -694,12 +779,129 @@ private struct CommandSortKey: Comparable {
   }
 }
 
+struct ShortcutResetPlan: Equatable {
+  let commandIDsToReset: [String]
+  let restoredBinding: Keybinding?
+  let conflictingCommandIDs: [String]
+}
+
+enum ShortcutResetPlanner {
+  static func makePlan(
+    commandID: String,
+    schema: KeybindingSchemaDocument,
+    userOverrides: KeybindingUserOverrideStore
+  ) -> ShortcutResetPlan {
+    let editableCommandIDs = Set(schema.commands.filter(\.allowUserOverride).map(\.id))
+    guard editableCommandIDs.contains(commandID) else {
+      return ShortcutResetPlan(
+        commandIDsToReset: [commandID],
+        restoredBinding: nil,
+        conflictingCommandIDs: []
+      )
+    }
+
+    let restoredResolved = resolvedMap(
+      byResetting: commandID,
+      in: schema,
+      userOverrides: userOverrides
+    )
+    let restoredBinding = restoredResolved.binding(for: commandID)?.binding
+
+    let initialConflicts = conflictingCommandIDs(
+      for: commandID,
+      in: restoredResolved,
+      editableCommandIDs: editableCommandIDs,
+      excluding: []
+    )
+
+    var tentative = userOverrides
+    var pending = [commandID]
+    var processed: Set<String> = []
+    var commandIDsToReset: [String] = []
+    var index = 0
+
+    while index < pending.count {
+      let currentCommandID = pending[index]
+      index += 1
+      guard editableCommandIDs.contains(currentCommandID) else { continue }
+      guard processed.insert(currentCommandID).inserted else { continue }
+
+      tentative.overrides.removeValue(forKey: currentCommandID)
+      commandIDsToReset.append(currentCommandID)
+
+      let resolved = KeybindingResolver.resolve(
+        schema: schema,
+        userOverrides: tentative
+      )
+
+      let conflicts = conflictingCommandIDs(
+        for: currentCommandID,
+        in: resolved,
+        editableCommandIDs: editableCommandIDs,
+        excluding: processed
+      )
+      pending.append(contentsOf: conflicts)
+    }
+
+    if commandIDsToReset.isEmpty {
+      commandIDsToReset = [commandID]
+    }
+
+    return ShortcutResetPlan(
+      commandIDsToReset: commandIDsToReset,
+      restoredBinding: restoredBinding,
+      conflictingCommandIDs: initialConflicts
+    )
+  }
+
+  private static func resolvedMap(
+    byResetting commandID: String,
+    in schema: KeybindingSchemaDocument,
+    userOverrides: KeybindingUserOverrideStore
+  ) -> ResolvedKeybindingMap {
+    var tentative = userOverrides
+    tentative.overrides.removeValue(forKey: commandID)
+    return KeybindingResolver.resolve(
+      schema: schema,
+      userOverrides: tentative
+    )
+  }
+
+  private static func conflictingCommandIDs(
+    for commandID: String,
+    in resolved: ResolvedKeybindingMap,
+    editableCommandIDs: Set<String>,
+    excluding excludedCommandIDs: Set<String>
+  ) -> [String] {
+    guard let currentBinding = resolved.binding(for: commandID)?.binding else {
+      return []
+    }
+
+    return editableCommandIDs
+      .filter {
+        $0 != commandID
+          && !excludedCommandIDs.contains($0)
+          && resolved.binding(for: $0)?.binding == currentBinding
+      }
+      .sorted()
+  }
+}
+
 private struct ShortcutConflict: Equatable {
   let newCommandID: String
   let newCommandTitle: String
   let existingCommandID: String
   let existingCommandTitle: String
   let binding: Keybinding
+}
+
+private struct ResetConflict: Equatable {
+  let commandID: String
+  let commandTitle: String
+  let restoredBinding: Keybinding
+  let occupiedCommandTitle: String
+  let cascadingTitles: [String]
+  let commandIDsToReset: [String]
 }
 
 private struct PendingOverride: Equatable {
