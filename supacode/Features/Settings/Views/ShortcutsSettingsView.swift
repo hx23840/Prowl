@@ -158,9 +158,11 @@ struct ShortcutsSettingsView: View {
             Image(systemName: "arrow.counterclockwise")
               .font(.caption.weight(.semibold))
               .foregroundStyle(.secondary)
+              .accessibilityHidden(true)
           }
           .buttonStyle(.plain)
           .help("Reset to default")
+          .accessibilityLabel("Reset shortcut to default")
         } else {
           Color.clear
             .frame(width: 16, height: 16)
@@ -211,6 +213,7 @@ struct ShortcutsSettingsView: View {
           Image(systemName: "record.circle.fill")
             .font(.caption)
             .foregroundStyle(Color.accentColor)
+            .accessibilityHidden(true)
         }
 
         Text(shortcutRecorderTitle(resolvedBinding: resolvedBinding, isRecording: isRecording))
