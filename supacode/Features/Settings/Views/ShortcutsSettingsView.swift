@@ -4,10 +4,12 @@ import SwiftUI
 
 struct ShortcutsSettingsView: View {
   private enum ShortcutTableLayout {
+    static let commandColumnMinWidth: CGFloat = 180
     static let statusChipWidth: CGFloat = 108
     static let statusChipHeight: CGFloat = 24
     static let statusColumnWidth: CGFloat = statusChipWidth
-    static let shortcutColumnWidth: CGFloat = 220
+    static let shortcutColumnMinWidth: CGFloat = 120
+    static let shortcutColumnIdealWidth: CGFloat = 220
     static let actionColumnWidth: CGFloat = 16
   }
 
@@ -55,11 +57,17 @@ struct ShortcutsSettingsView: View {
 
       HStack(spacing: 12) {
         Text("Command")
-          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(minWidth: ShortcutTableLayout.commandColumnMinWidth, maxWidth: .infinity, alignment: .leading)
+          .layoutPriority(1)
         Text("Status")
           .frame(width: ShortcutTableLayout.statusColumnWidth, alignment: .leading)
         Text("Shortcut")
-          .frame(width: ShortcutTableLayout.shortcutColumnWidth, alignment: .leading)
+          .frame(
+            minWidth: ShortcutTableLayout.shortcutColumnMinWidth,
+            idealWidth: ShortcutTableLayout.shortcutColumnIdealWidth,
+            maxWidth: ShortcutTableLayout.shortcutColumnIdealWidth,
+            alignment: .leading
+          )
         Color.clear
           .frame(width: ShortcutTableLayout.actionColumnWidth, height: 1)
       }
@@ -146,7 +154,8 @@ struct ShortcutsSettingsView: View {
         Text(command.title)
           .lineLimit(1)
           .truncationMode(.tail)
-          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(minWidth: ShortcutTableLayout.commandColumnMinWidth, maxWidth: .infinity, alignment: .leading)
+          .layoutPriority(1)
 
         sourceChip(source)
           .frame(width: ShortcutTableLayout.statusColumnWidth, alignment: .leading)
@@ -157,7 +166,12 @@ struct ShortcutsSettingsView: View {
           isRecording: isRecording,
           isHovering: isHoveringRecorder
         )
-        .frame(width: ShortcutTableLayout.shortcutColumnWidth, alignment: .leading)
+        .frame(
+          minWidth: ShortcutTableLayout.shortcutColumnMinWidth,
+          idealWidth: ShortcutTableLayout.shortcutColumnIdealWidth,
+          maxWidth: ShortcutTableLayout.shortcutColumnIdealWidth,
+          alignment: .leading
+        )
 
         if hasOverride {
           Button {
@@ -171,6 +185,7 @@ struct ShortcutsSettingsView: View {
           .buttonStyle(.plain)
           .help("Reset to default")
           .accessibilityLabel("Reset shortcut to default")
+          .frame(width: ShortcutTableLayout.actionColumnWidth, height: ShortcutTableLayout.actionColumnWidth)
         } else {
           Color.clear
             .frame(width: ShortcutTableLayout.actionColumnWidth, height: ShortcutTableLayout.actionColumnWidth)
