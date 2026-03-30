@@ -316,7 +316,78 @@ struct ShortcutsSettingsView: View {
     editableCommands
       .filter { ShortcutGroup.resolve(for: $0.id) == group }
       .filter(matchesSearch)
-      .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+      .sorted {
+        commandSortKey(for: $0, in: group) < commandSortKey(for: $1, in: group)
+      }
+  }
+
+  private func commandSortKey(
+    for command: KeybindingCommandSchema,
+    in group: ShortcutGroup
+  ) -> CommandSortKey {
+    guard group == .terminal else {
+      return CommandSortKey(category: 0, order: 0, title: command.title)
+    }
+
+    if let order = terminalTabOrder(for: command.id) {
+      return CommandSortKey(category: 0, order: order, title: command.title)
+    }
+
+    if let order = terminalPaneOrder(for: command.id) {
+      return CommandSortKey(category: 1, order: order, title: command.title)
+    }
+
+    return CommandSortKey(category: 2, order: Int.max, title: command.title)
+  }
+
+  private func terminalTabOrder(for commandID: String) -> Int? {
+    switch commandID {
+    case AppShortcuts.CommandID.selectPreviousTerminalTab:
+      return 0
+    case AppShortcuts.CommandID.selectNextTerminalTab:
+      return 1
+    case AppShortcuts.CommandID.selectTerminalTab1:
+      return 2
+    case AppShortcuts.CommandID.selectTerminalTab2:
+      return 3
+    case AppShortcuts.CommandID.selectTerminalTab3:
+      return 4
+    case AppShortcuts.CommandID.selectTerminalTab4:
+      return 5
+    case AppShortcuts.CommandID.selectTerminalTab5:
+      return 6
+    case AppShortcuts.CommandID.selectTerminalTab6:
+      return 7
+    case AppShortcuts.CommandID.selectTerminalTab7:
+      return 8
+    case AppShortcuts.CommandID.selectTerminalTab8:
+      return 9
+    case AppShortcuts.CommandID.selectTerminalTab9:
+      return 10
+    case AppShortcuts.CommandID.selectTerminalTab0:
+      return 11
+    default:
+      return nil
+    }
+  }
+
+  private func terminalPaneOrder(for commandID: String) -> Int? {
+    switch commandID {
+    case AppShortcuts.CommandID.selectPreviousTerminalPane:
+      return 0
+    case AppShortcuts.CommandID.selectNextTerminalPane:
+      return 1
+    case AppShortcuts.CommandID.selectTerminalPaneUp:
+      return 2
+    case AppShortcuts.CommandID.selectTerminalPaneDown:
+      return 3
+    case AppShortcuts.CommandID.selectTerminalPaneLeft:
+      return 4
+    case AppShortcuts.CommandID.selectTerminalPaneRight:
+      return 5
+    default:
+      return nil
+    }
   }
 
   private func matchesSearch(_ command: KeybindingCommandSchema) -> Bool {
@@ -596,6 +667,22 @@ struct ShortcutsSettingsView: View {
         }
       }
     )
+  }
+}
+
+private struct CommandSortKey: Comparable {
+  let category: Int
+  let order: Int
+  let title: String
+
+  static func < (lhs: CommandSortKey, rhs: CommandSortKey) -> Bool {
+    if lhs.category != rhs.category {
+      return lhs.category < rhs.category
+    }
+    if lhs.order != rhs.order {
+      return lhs.order < rhs.order
+    }
+    return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
   }
 }
 
