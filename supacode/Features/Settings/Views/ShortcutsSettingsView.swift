@@ -538,29 +538,28 @@ struct ShortcutsSettingsView: View {
     binding: Keybinding,
     policy: KeybindingConflictPolicy
   ) -> ShortcutConflict? {
-    guard policy == .warnAndPreferUserOverride else { return nil }
-
-    var tentative = store.keybindingUserOverrides
-    tentative.overrides[commandID] = KeybindingUserOverride(binding: binding)
-
-    let resolved = KeybindingResolver.resolve(
+    guard let existingCommandID = ShortcutConflictDetector.firstConflictCommandID(
+      commandID: commandID,
+      binding: binding,
+      policy: policy,
       schema: .appResolverSchema(),
-      userOverrides: tentative
-    )
-
-    for command in editableCommands where command.id != commandID {
-      guard resolved.binding(for: command.id)?.binding == binding else { continue }
-      let newTitle = editableCommands.first(where: { $0.id == commandID })?.title ?? commandID
-      return ShortcutConflict(
-        newCommandID: commandID,
-        newCommandTitle: newTitle,
-        existingCommandID: command.id,
-        existingCommandTitle: command.title,
-        binding: binding
-      )
+      userOverrides: store.keybindingUserOverrides
+    ) else {
+      return nil
     }
 
-    return nil
+    guard let existingCommand = editableCommands.first(where: { $0.id == existingCommandID }) else {
+      return nil
+    }
+
+    let newTitle = editableCommands.first(where: { $0.id == commandID })?.title ?? commandID
+    return ShortcutConflict(
+      newCommandID: commandID,
+      newCommandTitle: newTitle,
+      existingCommandID: existingCommand.id,
+      existingCommandTitle: existingCommand.title,
+      binding: binding
+    )
   }
 
   private func applyPendingOverride(replacingConflict: Bool) {
