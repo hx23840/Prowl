@@ -726,6 +726,15 @@ struct RepositorySettingsView: View {
 
   private func dismissIconPicker() {
     iconPickerCommandID = nil
+    Task { @MainActor in
+      // Prevent AppKit from restoring focus to the first TextField in the settings form
+      // when the icon popover closes.
+      await Task.yield()
+      guard iconPickerCommandID == nil else {
+        return
+      }
+      NSApp.keyWindow?.makeFirstResponder(nil)
+    }
   }
 
   private func scriptPlaceholder(for execution: UserCustomCommandExecution) -> String {
