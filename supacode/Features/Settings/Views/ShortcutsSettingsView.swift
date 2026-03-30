@@ -294,22 +294,30 @@ struct ShortcutsSettingsView: View {
 
   private func sourceChip(_ source: KeybindingSource) -> some View {
     let isDefault = source == .appDefault
-    let label = isDefault ? "Default" : "Defined"
+    guard !isDefault else {
+      return AnyView(
+        Color.clear
+          .frame(width: ShortcutTableLayout.statusChipWidth, height: ShortcutTableLayout.statusChipHeight)
+          .accessibilityHidden(true)
+      )
+    }
 
-    return Text(label)
-      .font(.caption2.monospaced())
-      .lineLimit(1)
-      .minimumScaleFactor(0.8)
-      .frame(width: ShortcutTableLayout.statusChipWidth, height: ShortcutTableLayout.statusChipHeight)
-      .foregroundStyle(isDefault ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.accentColor))
-      .background(
-        Capsule()
-          .fill(isDefault ? Color(nsColor: .quaternaryLabelColor).opacity(0.25) : Color.accentColor.opacity(0.2))
-      )
-      .overlay(
-        Capsule()
-          .strokeBorder(isDefault ? Color(nsColor: .separatorColor) : Color.accentColor.opacity(0.35), lineWidth: 1)
-      )
+    return AnyView(
+      Text("Defined")
+        .font(.caption2.monospaced())
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(width: ShortcutTableLayout.statusChipWidth, height: ShortcutTableLayout.statusChipHeight)
+        .foregroundStyle(AnyShapeStyle(Color.accentColor))
+        .background(
+          Capsule()
+            .fill(Color.accentColor.opacity(0.2))
+        )
+        .overlay(
+          Capsule()
+            .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
+        )
+    )
   }
 
   private func commands(for group: ShortcutGroup) -> [KeybindingCommandSchema] {
