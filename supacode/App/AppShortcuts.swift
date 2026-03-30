@@ -570,7 +570,7 @@ enum AppShortcuts {
     .init(
       id: CommandID.commandPalette,
       title: "Command Palette",
-      scope: .systemFixedAppAction,
+      scope: .configurableAppAction,
       shortcut: commandPalette
     ),
     .init(
