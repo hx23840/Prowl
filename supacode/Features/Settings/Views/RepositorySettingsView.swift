@@ -14,6 +14,8 @@ struct RepositorySettingsView: View {
   @State private var pendingShortcutConflict: CustomCommandShortcutConflict?
   @State private var pendingShortcut: PendingCustomShortcut?
   @State private var iconPickerCommandID: UserCustomCommand.ID?
+  @State private var iconPickerReturnResponder: NSResponder?
+  @State private var customCommandsFocusAnchor: NSView?
   @State private var commandEditorCommandID: UserCustomCommand.ID?
   @State private var editingNameCommandID: UserCustomCommand.ID?
   @FocusState private var focusedNameEditorCommandID: UserCustomCommand.ID?
@@ -379,6 +381,14 @@ struct RepositorySettingsView: View {
           .foregroundStyle(.secondary)
       }
     }
+    .background {
+      FirstResponderAnchorView { anchor in
+        if customCommandsFocusAnchor !== anchor {
+          customCommandsFocusAnchor = anchor
+        }
+      }
+      .frame(width: 0, height: 0)
+    }
   }
 
   @ViewBuilder
@@ -688,6 +698,7 @@ struct RepositorySettingsView: View {
       dismissIconPicker()
       return
     }
+    iconPickerReturnResponder = NSApp.keyWindow?.firstResponder as? NSResponder
     iconPickerCommandID = commandID
     commandEditorCommandID = nil
     endNameEditing()
@@ -727,13 +738,32 @@ struct RepositorySettingsView: View {
   private func dismissIconPicker() {
     iconPickerCommandID = nil
     Task { @MainActor in
-      // Prevent AppKit from restoring focus to the first TextField in the settings form
-      // when the icon popover closes.
       await Task.yield()
       guard iconPickerCommandID == nil else {
         return
       }
-      NSApp.keyWindow?.makeFirstResponder(nil)
+      guard let window = NSApp.keyWindow else {
+        iconPickerReturnResponder = nil
+        return
+      }
+
+      let preferredResponder = iconPickerReturnResponder
+      iconPickerReturnResponder = nil
+
+      if let preferredResponder,
+        window.makeFirstResponder(preferredResponder)
+      {
+        return
+      }
+
+      if let customCommandsFocusAnchor,
+        customCommandsFocusAnchor.window === window,
+        window.makeFirstResponder(customCommandsFocusAnchor)
+      {
+        return
+      }
+
+      _ = window.makeFirstResponder(nil)
     }
   }
 
@@ -1156,6 +1186,26 @@ private struct InlineEditableFieldContainer<Content: View>: View {
 
   private var borderWidth: CGFloat {
     (isActive || isHovering) ? 1 : 0
+  }
+}
+
+private struct FirstResponderAnchorView: NSViewRepresentable {
+  let onResolve: (NSView) -> Void
+
+  func makeNSView(context: Context) -> FirstResponderAnchorNSView {
+    let view = FirstResponderAnchorNSView()
+    onResolve(view)
+    return view
+  }
+
+  func updateNSView(_ nsView: FirstResponderAnchorNSView, context: Context) {
+    onResolve(nsView)
+  }
+}
+
+private final class FirstResponderAnchorNSView: NSView {
+  override var acceptsFirstResponder: Bool {
+    true
   }
 }
 
