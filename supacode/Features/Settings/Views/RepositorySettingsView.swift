@@ -305,7 +305,7 @@ struct RepositorySettingsView: View {
   @ViewBuilder
   private var customCommandsEditor: some View {
     VStack(alignment: .leading, spacing: 10) {
-      Table(store.userSettings.customCommands) {
+      Table(store.userSettings.customCommands, selection: $selectedCustomCommandID) {
         TableColumn("") { command in
           customCommandRowCell(commandID: command.id, role: .leading) {
             customCommandIconCell(command)
@@ -531,6 +531,7 @@ struct RepositorySettingsView: View {
       .background {
         if selectedCustomCommandID == commandID {
           rowSelectionBackground(role: role)
+            .padding(selectionBackgroundInsets(for: role))
         }
       }
       .contentShape(Rectangle())
@@ -567,6 +568,18 @@ struct RepositorySettingsView: View {
         style: .continuous
       )
       .fill(Color(nsColor: .selectedContentBackgroundColor).opacity(0.22))
+    }
+  }
+
+  private func selectionBackgroundInsets(for role: CustomCommandRowRole) -> EdgeInsets {
+    let bridge: CGFloat = 8
+    switch role {
+    case .leading:
+      return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: -bridge)
+    case .middle:
+      return EdgeInsets(top: 0, leading: -bridge, bottom: 0, trailing: -bridge)
+    case .trailing:
+      return EdgeInsets(top: 0, leading: -bridge, bottom: 0, trailing: 0)
     }
   }
 
