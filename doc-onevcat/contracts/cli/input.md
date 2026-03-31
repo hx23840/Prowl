@@ -40,8 +40,11 @@ prowl <subcommand> [target-selector] [command-args] [output-options]
 - `send`
 - `key`
 - `read`
-- `help`
-- `version`
+
+Global options (not subcommands):
+
+- `--help`
+- `--version`
 
 ### 2.3 Bare path entry
 
@@ -137,6 +140,7 @@ prowl open <path>
 - `prowl` without path is valid and means “open app / bring to front”.
 - `prowl <path-like>` is first-class, not shorthand hack.
 - `prowl open <path>` is explicit equivalent for scripts.
+- For all open-entry forms, if app is not running, CLI MUST launch Prowl and complete the open/focus flow.
 - Path MUST be normalized by CLI:
   - expand `~`
   - resolve relative path to absolute path
@@ -222,12 +226,10 @@ prowl read [selector] --last <n> [--json]
 
 ---
 
-## 6) Reserved words and compatibility
+## 6) Reserved command tokens (v1)
 
-To avoid future breaking changes, these tokens are reserved as first command token:
+These tokens are reserved as first command token:
 
-- `help`
-- `version`
 - `open`
 - `list`
 - `focus`
@@ -235,7 +237,9 @@ To avoid future breaking changes, these tokens are reserved as first command tok
 - `key`
 - `read`
 
-If first token matches reserved command, CLI MUST parse as subcommand unless forced by `--` path form.
+If first token matches a reserved command, CLI MUST parse as subcommand unless forced by `--` path form.
+
+`--help` / `--version` are handled as global options, not subcommands.
 
 ---
 
@@ -294,4 +298,4 @@ prowl list --pane <id>                     # list does not accept selector
 - No complex selector query language (`--where ...`).
 - No streaming mode for `read`.
 - No macro system for `key`.
-- No shell script as long-term parser truth source.
+- No dual parser implementations in v1.

@@ -21,7 +21,7 @@ This plan defines where CLI logic lives, how requests are transported to a runni
 
 `prowl` MUST be implemented as a first-class Swift executable (ArgumentParser-based), not shell-script business logic.
 
-- `bin/prowl` may remain only as thin shim (bootstrap / compatibility).
+- Existing `bin/prowl` shell implementation is discarded.
 - Parsing truth and input validation must live in Swift CLI module.
 
 Why:
@@ -42,9 +42,10 @@ App should not re-interpret argv-level ambiguity.
 
 ## Decision C: command execution is app-owned
 
-All commands except trivial `help/version` are **remote-control actions on running app state**.
+Phase-1 commands are **remote-control actions on running app state**.
 
 - Open/path, list, focus, send, key, read all execute in app process context.
+- `open` must be able to launch app when it is not running.
 - CLI is transport + contract adapter, not a parallel runtime.
 
 ---
@@ -117,8 +118,9 @@ If transport fails:
 2. CLI builds command envelope (`command`, `outputMode`, `requestId` optional).
 3. CLI sends envelope to app command service.
 4. App command router resolves target context and executes action.
-5. App returns structured success/error response.
-6. CLI renders JSON or text.
+5. For open-entry commands, if app is not running, app launch is part of command execution.
+6. App returns structured success/error response.
+7. CLI renders JSON or text.
 
 This ensures one authoritative runtime path for both GUI-triggered and CLI-triggered actions.
 
@@ -161,8 +163,7 @@ Implementation MUST be validated against `schema.md` for `--json` mode.
 ## M1 — parser/runtime split
 
 - Introduce Swift `prowl` executable target.
-- Move all meaningful argument logic out of shell script.
-- Keep shell shim only if needed.
+- Discard shell implementation and keep command parsing in Swift only.
 
 ## M2 — command service scaffold
 
@@ -199,15 +200,7 @@ Implementation MUST be validated against `schema.md` for `--json` mode.
 
 ---
 
-## 10) Rollback / compatibility
-
-- Keep `prowl <path>` stable during migration.
-- If old shell entry remains, it must delegate to Swift binary and avoid duplicate parsing logic.
-- Do not change output schema versions during phase-1 implementation unless contract docs are intentionally bumped.
-
----
-
-## 11) Why this supersedes ad-hoc approach
+## 10) Why this supersedes ad-hoc approach
 
 This plan intentionally prevents a repeat of mixed concerns where:
 
