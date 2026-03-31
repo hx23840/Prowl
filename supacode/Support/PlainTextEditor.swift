@@ -5,7 +5,7 @@ struct PlainTextEditor: NSViewRepresentable {
   @Binding var text: String
   var isMonospaced: Bool = false
   var shouldFocus: Bool = false
-  var placeholder: String? = nil
+  var placeholder: String?
   var hidesPlaceholderWhenFocused: Bool = false
 
   func makeCoordinator() -> Coordinator {
