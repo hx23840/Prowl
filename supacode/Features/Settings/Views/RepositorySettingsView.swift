@@ -466,7 +466,7 @@ struct RepositorySettingsView: View {
       ) {
         commandEditorPopover(for: binding)
       }
-      .help("Shell runs in a new tab. Terminal sends input to the focused terminal.")
+      .help("New Tab runs in a new tab. In Place sends input to the focused terminal.")
     } else {
       InlineEditableCellButton {
         selectCustomCommand(command.id)
@@ -613,9 +613,9 @@ struct RepositorySettingsView: View {
   private func inlineCommandTitle(for execution: UserCustomCommandExecution) -> String {
     switch execution {
     case .shellScript:
-      return "Shell"
+      return "New Tab"
     case .terminalInput:
-      return "Terminal"
+      return "In Place"
     }
   }
 
@@ -683,9 +683,9 @@ struct RepositorySettingsView: View {
         .foregroundStyle(.secondary)
 
       Picker("Execution", selection: command.execution) {
-        Text("Shell")
+        Text("New Tab")
           .tag(UserCustomCommandExecution.shellScript)
-        Text("Terminal")
+        Text("In Place")
           .tag(UserCustomCommandExecution.terminalInput)
       }
       .pickerStyle(.segmented)

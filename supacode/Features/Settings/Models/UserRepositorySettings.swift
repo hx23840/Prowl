@@ -103,9 +103,9 @@ nonisolated enum UserCustomCommandExecution: String, Codable, CaseIterable, Iden
   var title: String {
     switch self {
     case .shellScript:
-      return "Shell Script"
+      return "New Tab"
     case .terminalInput:
-      return "Terminal Input"
+      return "In Place"
     }
   }
 }
