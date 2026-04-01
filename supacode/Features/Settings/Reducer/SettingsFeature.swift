@@ -26,6 +26,7 @@ struct SettingsFeature {
     var defaultWorktreeBaseDirectoryPath: String
     var restoreTerminalLayoutOnLaunch: Bool
     var terminalFontSize: Float32?
+    var keybindingUserOverrides: KeybindingUserOverrideStore
     var selection: SettingsSection? = .general
     var repositorySettings: RepositorySettingsFeature.State?
     @Presents var alert: AlertState<Alert>?
@@ -54,6 +55,7 @@ struct SettingsFeature {
         SupacodePaths.normalizedWorktreeBaseDirectoryPath(settings.defaultWorktreeBaseDirectoryPath) ?? ""
       restoreTerminalLayoutOnLaunch = settings.restoreTerminalLayoutOnLaunch
       terminalFontSize = settings.terminalFontSize
+      keybindingUserOverrides = settings.keybindingUserOverrides
     }
 
     var globalSettings: GlobalSettings {
@@ -80,7 +82,8 @@ struct SettingsFeature {
           defaultWorktreeBaseDirectoryPath
         ),
         restoreTerminalLayoutOnLaunch: restoreTerminalLayoutOnLaunch,
-        terminalFontSize: terminalFontSize
+        terminalFontSize: terminalFontSize,
+        keybindingUserOverrides: keybindingUserOverrides
       )
     }
   }
@@ -162,6 +165,7 @@ struct SettingsFeature {
         state.defaultWorktreeBaseDirectoryPath = normalizedSettings.defaultWorktreeBaseDirectoryPath ?? ""
         state.restoreTerminalLayoutOnLaunch = normalizedSettings.restoreTerminalLayoutOnLaunch
         state.terminalFontSize = normalizedSettings.terminalFontSize
+        state.keybindingUserOverrides = normalizedSettings.keybindingUserOverrides
         state.repositorySettings?.globalDefaultWorktreeBaseDirectoryPath =
           normalizedSettings.defaultWorktreeBaseDirectoryPath
         return .send(.delegate(.settingsChanged(normalizedSettings)))

@@ -121,10 +121,12 @@ struct WorktreeDetailView: View {
   }
 
   private func toolbarState(input: ToolbarStateInput) -> WorktreeToolbarState? {
-    guard let title = DetailToolbarTitle.forSelection(
-      worktree: input.selectedWorktree,
-      repository: input.repositories.selectedRepository
-    ) else {
+    guard
+      let title = DetailToolbarTitle.forSelection(
+        worktree: input.selectedWorktree,
+        repository: input.repositories.selectedRepository
+      )
+    else {
       return nil
     }
     let pullRequest = input.selectedWorktree.flatMap { input.repositories.worktreeInfo(for: $0.id)?.pullRequest }
@@ -189,9 +191,11 @@ struct WorktreeDetailView: View {
     selectedWorktreeSummaries: [MultiSelectedWorktreeSummary]
   ) -> some View {
     if repositories.isShowingCanvas {
-      CanvasView(terminalManager: terminalManager, onExitToTab: {
-        store.send(.repositories(.toggleCanvas))
-      })
+      CanvasView(
+        terminalManager: terminalManager,
+        onExitToTab: {
+          store.send(.repositories(.toggleCanvas))
+        })
     } else if repositories.isShowingArchivedWorktrees {
       ArchivedWorktreesDetailView(
         store: store.scope(state: \.repositories, action: \.repositories)
@@ -386,14 +390,6 @@ struct WorktreeDetailView: View {
     let runScriptEnabled: Bool
     let runScriptIsRunning: Bool
     let customCommands: [UserCustomCommand]
-
-    var runScriptHelpText: String {
-      "Run Script (\(AppShortcuts.runScript.display))"
-    }
-
-    var stopRunScriptHelpText: String {
-      "Stop Script (\(AppShortcuts.stopRunScript.display))"
-    }
   }
 
   fileprivate struct WorktreeToolbarContent: ToolbarContent {
@@ -407,6 +403,7 @@ struct WorktreeDetailView: View {
     let onRunScript: () -> Void
     let onStopRunScript: () -> Void
     let onRunCustomCommand: (Int) -> Void
+    @Environment(\.resolvedKeybindings) private var resolvedKeybindings
 
     var body: some ToolbarContent {
       ToolbarItem {
@@ -458,7 +455,7 @@ struct WorktreeDetailView: View {
       } label: {
         OpenWorktreeActionMenuLabelView(
           action: resolvedOpenActionSelection,
-          shortcutHint: showExtras ? AppShortcuts.openFinder.display : nil
+          shortcutHint: showExtras ? shortcutDisplay(for: AppShortcuts.CommandID.openWorktree) : nil
         )
       }
       .help(openActionHelpText(for: resolvedOpenActionSelection, isDefault: true))
@@ -493,9 +490,12 @@ struct WorktreeDetailView: View {
     }
 
     private func openActionHelpText(for action: OpenWorktreeAction, isDefault: Bool) -> String {
-      isDefault
-        ? "\(action.title) (\(AppShortcuts.openFinder.display))"
-        : action.title
+      guard isDefault else { return action.title }
+      return AppShortcuts.helpText(
+        title: action.title,
+        commandID: AppShortcuts.CommandID.openWorktree,
+        in: resolvedKeybindings
+      )
     }
 
     @ToolbarContentBuilder
@@ -505,49 +505,69 @@ struct WorktreeDetailView: View {
           RunScriptToolbarButton(
             isRunning: toolbarState.runScriptIsRunning,
             isEnabled: toolbarState.runScriptEnabled,
-            runHelpText: toolbarState.runScriptHelpText,
-            stopHelpText: toolbarState.stopRunScriptHelpText,
-            runShortcut: AppShortcuts.runScript.display,
-            stopShortcut: AppShortcuts.stopRunScript.display,
+            runHelpText: AppShortcuts.helpText(
+              title: "Run Script",
+              commandID: AppShortcuts.CommandID.runScript,
+              in: resolvedKeybindings
+            ),
+            stopHelpText: AppShortcuts.helpText(
+              title: "Stop Script",
+              commandID: AppShortcuts.CommandID.stopScript,
+              in: resolvedKeybindings
+            ),
+            runShortcut: shortcutDisplay(for: AppShortcuts.CommandID.runScript),
+            stopShortcut: shortcutDisplay(for: AppShortcuts.CommandID.stopScript),
             runAction: onRunScript,
             stopAction: onStopRunScript
           )
         }
       }
 
-      if let command = customCommand(at: 0) {
-        ToolbarItem {
-          customCommandButton(command, index: 0)
+      let entries = customCommandEntries
+      let inlineEntries = Array(entries.prefix(3))
+      let overflowEntries = Array(entries.dropFirst(3))
+
+      if !inlineEntries.isEmpty {
+        ToolbarItemGroup {
+          ForEach(inlineEntries, id: \.command.id) { entry in
+            customCommandButton(entry.command, index: entry.index)
+          }
         }
       }
-      if let command = customCommand(at: 1) {
+
+      if !overflowEntries.isEmpty {
         ToolbarItem {
-          customCommandButton(command, index: 1)
-        }
-      }
-      if let command = customCommand(at: 2) {
-        ToolbarItem {
-          customCommandButton(command, index: 2)
+          CustomCommandOverflowButton(
+            entries: overflowEntries,
+            shortcutDisplay: customCommandShortcutDisplay(for:),
+            onRunCustomCommand: onRunCustomCommand
+          )
         }
       }
     }
 
-    private func customCommand(at index: Int) -> UserCustomCommand? {
-      guard toolbarState.customCommands.indices.contains(index) else {
-        return nil
-      }
-      return toolbarState.customCommands[index]
+    private var customCommandEntries: [(index: Int, command: UserCustomCommand)] {
+      Array(toolbarState.customCommands.enumerated()).map { (index: $0.offset, command: $0.element) }
     }
 
     private func customCommandButton(_ command: UserCustomCommand, index: Int) -> some View {
       UserCustomCommandToolbarButton(
         title: command.resolvedTitle,
         systemImage: command.resolvedSystemImage,
-        shortcut: command.shortcut?.isValid == true ? command.shortcut?.display : nil,
+        shortcut: customCommandShortcutDisplay(for: command),
+        isEnabled: command.hasRunnableCommand,
         action: {
           onRunCustomCommand(index)
         }
       )
+    }
+
+    private func customCommandShortcutDisplay(for command: UserCustomCommand) -> String? {
+      shortcutDisplay(for: LegacyCustomCommandShortcutMigration.customCommandBindingID(for: command.id))
+    }
+
+    private func shortcutDisplay(for commandID: String) -> String? {
+      AppShortcuts.display(for: commandID, in: resolvedKeybindings)
     }
   }
 
@@ -656,8 +676,8 @@ private struct RunScriptToolbarButton: View {
   let isEnabled: Bool
   let runHelpText: String
   let stopHelpText: String
-  let runShortcut: String
-  let stopShortcut: String
+  let runShortcut: String?
+  let stopShortcut: String?
   let runAction: () -> Void
   let stopAction: () -> Void
   @Environment(CommandKeyObserver.self) private var commandKeyObserver
@@ -696,8 +716,8 @@ private struct RunScriptToolbarButton: View {
           .accessibilityHidden(true)
         Text(config.title)
 
-        if commandKeyObserver.isPressed {
-          Text(config.shortcut)
+        if commandKeyObserver.isPressed, let shortcut = config.shortcut {
+          Text(shortcut)
             .font(.caption)
             .foregroundStyle(.secondary)
         }
@@ -712,7 +732,7 @@ private struct RunScriptToolbarButton: View {
     let title: String
     let systemImage: String
     let helpText: String
-    let shortcut: String
+    let shortcut: String?
     let isEnabled: Bool
     let action: () -> Void
   }
@@ -722,6 +742,7 @@ private struct UserCustomCommandToolbarButton: View {
   let title: String
   let systemImage: String
   let shortcut: String?
+  let isEnabled: Bool
   let action: () -> Void
   @Environment(CommandKeyObserver.self) private var commandKeyObserver
 
@@ -742,13 +763,77 @@ private struct UserCustomCommandToolbarButton: View {
     }
     .font(.caption)
     .help(helpText)
+    .disabled(!isEnabled)
   }
 
   private var helpText: String {
+    guard isEnabled else {
+      return "\(title) (Set command script in Repository Settings)"
+    }
     if let shortcut {
       return "\(title) (\(shortcut))"
     }
     return title
+  }
+}
+
+private struct CustomCommandOverflowButton: View {
+  let entries: [(index: Int, command: UserCustomCommand)]
+  let shortcutDisplay: (UserCustomCommand) -> String?
+  let onRunCustomCommand: (Int) -> Void
+
+  @State private var isPresented = false
+  private let maxVisibleRows = 10
+
+  var body: some View {
+    Button {
+      isPresented.toggle()
+    } label: {
+      Image(systemName: "chevron.down")
+        .font(.caption2)
+        .accessibilityLabel("More custom commands")
+    }
+    .help("More custom commands")
+    .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+      ScrollView {
+        VStack(alignment: .leading, spacing: 2) {
+          ForEach(entries, id: \.command.id) { entry in
+            Button {
+              isPresented = false
+              onRunCustomCommand(entry.index)
+            } label: {
+              HStack(spacing: 8) {
+                Image(systemName: entry.command.resolvedSystemImage)
+                  .foregroundStyle(.secondary)
+                  .frame(width: 14)
+                  .accessibilityHidden(true)
+                Text(entry.command.resolvedTitle)
+                  .lineLimit(1)
+                Spacer(minLength: 0)
+                if let shortcut = shortcutDisplay(entry.command) {
+                  Text(shortcut)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+              }
+              .padding(.horizontal, 8)
+              .padding(.vertical, 6)
+              .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!entry.command.hasRunnableCommand)
+          }
+        }
+        .padding(8)
+      }
+      .frame(width: 320, height: popoverHeight)
+    }
+  }
+
+  private var popoverHeight: CGFloat {
+    let visibleRows = min(maxVisibleRows, max(entries.count, 1))
+    return CGFloat(visibleRows) * 32 + 16
   }
 }
 
