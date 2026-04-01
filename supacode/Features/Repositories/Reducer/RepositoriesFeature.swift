@@ -85,6 +85,7 @@ struct RepositoriesFeature {
     var lastFocusedWorktreeID: Worktree.ID?
     var preCanvasWorktreeID: Worktree.ID?
     var preCanvasTerminalTargetID: Worktree.ID?
+    var launchRestoreMode: LaunchRestoreMode = .lastFocusedWorktree
     var shouldRestoreLastFocusedWorktree = false
     var shouldSelectFirstAfterReload = false
     var isRefreshingWorktrees = false
@@ -390,7 +391,9 @@ struct RepositoriesFeature {
 
       case .lastFocusedWorktreeIDLoaded(let lastFocusedWorktreeID):
         state.lastFocusedWorktreeID = lastFocusedWorktreeID
-        state.shouldRestoreLastFocusedWorktree = true
+        if state.launchRestoreMode != .restoreLayout {
+          state.shouldRestoreLastFocusedWorktree = true
+        }
         return .none
 
       case .setOpenPanelPresented(let isPresented):
@@ -2788,7 +2791,7 @@ struct RepositoriesFeature {
   }
 
   private nonisolated static func isNotGitRepositoryError(_ error: any Error) -> Bool {
-    guard case let GitClientError.commandFailed(_, message) = error else {
+    guard case GitClientError.commandFailed(_, let message) = error else {
       return false
     }
     return message.localizedCaseInsensitiveContains("not a git repository")
@@ -2796,7 +2799,7 @@ struct RepositoriesFeature {
 
   private nonisolated static func openRepositoryFailureMessage(path: String, error: any Error) -> String {
     let detail: String
-    if case let GitClientError.commandFailed(_, message) = error,
+    if case GitClientError.commandFailed(_, let message) = error,
       !message.isEmpty
     {
       detail = message
@@ -2868,14 +2871,14 @@ struct RepositoriesFeature {
             return WorktreesFetchResult(
               entry: entry,
               repository: Repository(
-                  id: rootURL.path(percentEncoded: false),
-                  rootURL: rootURL,
-                  name: Repository.name(for: rootURL),
-                  kind: .plain,
-                  worktrees: IdentifiedArray()
-                ),
-                errorMessage: nil
-              )
+                id: rootURL.path(percentEncoded: false),
+                rootURL: rootURL,
+                name: Repository.name(for: rootURL),
+                kind: .plain,
+                worktrees: IdentifiedArray()
+              ),
+              errorMessage: nil
+            )
           }
         }
       }

@@ -12,6 +12,14 @@ struct TerminalLayoutSnapshotPayloadTests {
     #expect(decoded == payload)
   }
 
+  @Test func decodeValidatedRoundTripsLeafCwdPath() throws {
+    let payload = makePayload(splitRoot: .leaf(surfaceID: "surface-1", cwdPath: "/tmp/repo/wt-1/src"))
+    let data = try JSONEncoder().encode(payload)
+
+    let decoded = TerminalLayoutSnapshotPayload.decodeValidated(from: data)
+    #expect(decoded == payload)
+  }
+
   @Test func decodeValidatedRejectsOversizedData() {
     let data = Data(
       repeating: 0,
@@ -87,6 +95,7 @@ struct TerminalLayoutSnapshotPayloadTests {
     let invalidRoot = TerminalLayoutSnapshotPayload.SnapshotSplitNode(
       kind: .split,
       surfaceID: nil,
+      cwdPath: nil,
       direction: .horizontal,
       ratio: 0.5,
       children: [
@@ -109,7 +118,7 @@ struct TerminalLayoutSnapshotPayloadTests {
           worktreeID: "wt-1",
           selectedTabID: "tab-missing",
           tabs: [
-            makeTab(tabID: "tab-1"),
+            makeTab(tabID: "tab-1")
           ]
         ),
       ]
@@ -119,30 +128,90 @@ struct TerminalLayoutSnapshotPayloadTests {
     #expect(TerminalLayoutSnapshotPayload.decodeValidated(from: data) == nil)
   }
 
+  @Test func decodeValidatedRejectsLeafWithEmptyCwdPath() throws {
+    let payload = makePayload(splitRoot: .leaf(surfaceID: "surface-1", cwdPath: "   "))
+    let data = try JSONEncoder().encode(payload)
+
+    #expect(TerminalLayoutSnapshotPayload.decodeValidated(from: data) == nil)
+  }
+
+  @Test func decodeValidatedRejectsSplitNodeWithCwdPath() throws {
+    let invalidRoot = TerminalLayoutSnapshotPayload.SnapshotSplitNode(
+      kind: .split,
+      surfaceID: nil,
+      cwdPath: "/tmp/repo/wt-1",
+      direction: .horizontal,
+      ratio: 0.5,
+      children: [
+        .leaf(surfaceID: "surface-1"),
+        .leaf(surfaceID: "surface-2"),
+      ]
+    )
+    let payload = makePayload(splitRoot: invalidRoot)
+    let data = try JSONEncoder().encode(payload)
+
+    #expect(TerminalLayoutSnapshotPayload.decodeValidated(from: data) == nil)
+  }
+
   @Test func decodeValidatedRejectsTypeMismatchInFields() {
     let invalidJSON = #"""
-    {
-      "version": 1,
-      "worktrees": [
-        {
-          "worktreeID": "wt-1",
-          "selectedTabID": "tab-1",
-          "tabs": [
-            {
-              "tabID": "tab-1",
-              "splitRoot": {
-                "kind": "split",
-                "direction": "horizontal",
-                "ratio": "bad",
-                "children": []
+      {
+        "version": 1,
+        "worktrees": [
+          {
+            "worktreeID": "wt-1",
+            "selectedTabID": "tab-1",
+            "tabs": [
+              {
+                "tabID": "tab-1",
+                "splitRoot": {
+                  "kind": "split",
+                  "direction": "horizontal",
+                  "ratio": "bad",
+                  "children": []
+                }
               }
-            }
-          ]
-        }
-      ]
-    }
-    """#
+            ]
+          }
+        ]
+      }
+      """#
     let data = Data(invalidJSON.utf8)
+
+    #expect(TerminalLayoutSnapshotPayload.decodeValidated(from: data) == nil)
+  }
+
+  @Test func decodeValidatedRoundTripsSelectedWorktreeID() throws {
+    let payload = TerminalLayoutSnapshotPayload(
+      selectedWorktreeID: "wt-1",
+      worktrees: [makeWorktree(worktreeID: "wt-1")]
+    )
+    let data = try JSONEncoder().encode(payload)
+
+    let decoded = TerminalLayoutSnapshotPayload.decodeValidated(from: data)
+    #expect(decoded == payload)
+    #expect(decoded?.selectedWorktreeID == "wt-1")
+  }
+
+  @Test func decodeValidatedAcceptsNilSelectedWorktreeID() throws {
+    let payload = TerminalLayoutSnapshotPayload(
+      selectedWorktreeID: nil,
+      worktrees: [makeWorktree(worktreeID: "wt-1")]
+    )
+    let data = try JSONEncoder().encode(payload)
+
+    let decoded = TerminalLayoutSnapshotPayload.decodeValidated(from: data)
+    #expect(decoded == payload)
+    #expect(decoded?.selectedWorktreeID == nil)
+  }
+
+  @Test func decodeValidatedRejectsSelectedWorktreeIDNotInWorktrees() throws {
+    let payload = TerminalLayoutSnapshotPayload(
+      version: TerminalLayoutSnapshotPayload.currentVersion,
+      selectedWorktreeID: "wt-missing",
+      worktrees: [makeWorktree(worktreeID: "wt-1")]
+    )
+    let data = try JSONEncoder().encode(payload)
 
     #expect(TerminalLayoutSnapshotPayload.decodeValidated(from: data) == nil)
   }
@@ -161,7 +230,7 @@ private func makePayload(
         worktreeID: worktreeID,
         selectedTabID: tabID,
         tabs: [
-          makeTab(tabID: tabID, splitRoot: splitRoot),
+          makeTab(tabID: tabID, splitRoot: splitRoot)
         ]
       ),
     ]
@@ -175,7 +244,7 @@ private func makeWorktree(
     worktreeID: worktreeID,
     selectedTabID: "tab-1",
     tabs: [
-      makeTab(tabID: "tab-1"),
+      makeTab(tabID: "tab-1")
     ]
   )
 }
