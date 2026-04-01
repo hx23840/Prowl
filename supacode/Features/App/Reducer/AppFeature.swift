@@ -4,8 +4,33 @@ import Foundation
 import PostHog
 import SwiftUI
 
+private let appLogger = SupaLogger("App")
+
 private enum CancelID {
   static let periodicRefresh = "app.periodicRefresh"
+}
+
+private func makeTerminalRestorableWorktrees(from repositories: [Repository]) -> [Worktree] {
+  var worktrees: [Worktree] = []
+  worktrees.reserveCapacity(repositories.reduce(0) { $0 + max(1, $1.worktrees.count) })
+  for repository in repositories {
+    if repository.capabilities.supportsWorktrees {
+      worktrees.append(contentsOf: repository.worktrees)
+      continue
+    }
+    if repository.capabilities.supportsRunnableFolderActions {
+      worktrees.append(
+        Worktree(
+          id: repository.id,
+          name: repository.name,
+          detail: repository.rootURL.path(percentEncoded: false),
+          workingDirectory: repository.rootURL,
+          repositoryRootURL: repository.rootURL
+        )
+      )
+    }
+  }
+  return worktrees
 }
 
 @Reducer
@@ -19,11 +44,14 @@ struct AppFeature {
     var openActionSelection: OpenWorktreeAction = .finder
     var selectedRunScript: String = ""
     var selectedCustomCommands: [UserCustomCommand] = []
+    var resolvedKeybindings: ResolvedKeybindingMap = .appDefaults
     var runScriptDraft: String = ""
     var isRunScriptPromptPresented = false
     var runScriptStatusByWorktreeID: [Worktree.ID: Bool] = [:]
     var notificationIndicatorCount: Int = 0
     var lastKnownSystemNotificationsEnabled: Bool
+    var launchRestoreMode: LaunchRestoreMode
+    var suppressLayoutSaveUntilRelaunch = false
     @Presents var alert: AlertState<Alert>?
 
     init(
@@ -33,6 +61,7 @@ struct AppFeature {
       self.repositories = repositories
       self.settings = settings
       lastKnownSystemNotificationsEnabled = settings.systemNotificationsEnabled
+      launchRestoreMode = settings.restoreTerminalLayoutOnLaunch ? .restoreLayout : .lastFocusedWorktree
     }
   }
 
@@ -84,10 +113,46 @@ struct AppFeature {
   @Dependency(WorktreeInfoWatcherClient.self) private var worktreeInfoWatcher
   @Dependency(CustomShortcutRegistryClient.self) private var customShortcutRegistryClient
 
+  private func resolvedKeybindings(
+    settings: SettingsFeature.State,
+    customCommands: [UserCustomCommand]
+  ) -> ResolvedKeybindingMap {
+    let migration = LegacyCustomCommandShortcutMigration.migrate(commands: customCommands)
+    var resolved = KeybindingResolver.resolve(
+      schema: .appResolverSchema(customCommands: customCommands),
+      userOverrides: settings.keybindingUserOverrides,
+      migratedOverrides: migration.overrides
+    )
+    let customCommandIDs = customCommands.map { command in
+      LegacyCustomCommandShortcutMigration.customCommandBindingID(for: command.id)
+    }
+    let customCommandBindings = customCommandIDs.compactMap { resolved.keybinding(for: $0) }
+    guard !customCommandBindings.isEmpty else {
+      return resolved
+    }
+    for binding in AppShortcuts.bindings where binding.scope == .configurableAppAction {
+      guard let resolvedBinding = resolved.binding(for: binding.id),
+        let shortcut = resolvedBinding.binding,
+        customCommandBindings.contains(shortcut)
+      else {
+        continue
+      }
+      resolved.bindingsByCommandID[binding.id] = ResolvedKeybinding(
+        command: resolvedBinding.command,
+        binding: nil,
+        source: resolvedBinding.source
+      )
+    }
+    return resolved
+  }
+
   var body: some Reducer<State, Action> {
     let core = Reduce<State, Action> { state, action in
       switch action {
       case .appLaunched:
+        try? SupacodePaths.migrateLegacyCacheFilesIfNeeded()
+        appLogger.info("[LayoutRestore] appLaunched: launchRestoreMode=\(String(describing: state.launchRestoreMode))")
+        state.repositories.launchRestoreMode = state.launchRestoreMode
         return .merge(
           .send(.repositories(.task)),
           .send(.settings(.task)),
@@ -124,7 +189,12 @@ struct AppFeature {
             .cancellable(id: CancelID.periodicRefresh, cancelInFlight: true)
           )
         case .inactive, .background:
-          return .cancel(id: CancelID.periodicRefresh)
+          var effects: [Effect<Action>] = [.cancel(id: CancelID.periodicRefresh)]
+          if state.settings.restoreTerminalLayoutOnLaunch, !state.suppressLayoutSaveUntilRelaunch {
+            appLogger.info("[LayoutRestore] scenePhase=\(String(describing: phase)), saving layout snapshot")
+            effects.append(.run { _ in await terminalClient.send(.saveLayoutSnapshot) })
+          }
+          return .merge(effects)
         @unknown default:
           return .cancel(id: CancelID.periodicRefresh)
         }
@@ -139,6 +209,10 @@ struct AppFeature {
           state.openActionSelection = .finder
           state.selectedRunScript = ""
           state.selectedCustomCommands = []
+          state.resolvedKeybindings = resolvedKeybindings(
+            settings: state.settings,
+            customCommands: state.selectedCustomCommands
+          )
           state.runScriptDraft = ""
           state.isRunScriptPromptPresented = false
           var effects: [Effect<Action>] = [
@@ -167,6 +241,10 @@ struct AppFeature {
         let rootURL = worktree.repositoryRootURL
         let worktreeID = worktree.id
         state.selectedCustomCommands = []
+        state.resolvedKeybindings = resolvedKeybindings(
+          settings: state.settings,
+          customCommands: state.selectedCustomCommands
+        )
         state.runScriptDraft = ""
         state.isRunScriptPromptPresented = false
         @Shared(.repositorySettings(rootURL)) var repositorySettings
@@ -222,11 +300,25 @@ struct AppFeature {
         let ids = state.repositories.terminalStateIDs.subtracting(archivedIDs)
         let recencyIDs = CommandPaletteFeature.recencyRetentionIDs(from: repositories)
         let worktrees = state.repositories.worktreesForInfoWatcher()
+        let shouldRestoreLayout =
+          state.launchRestoreMode == .restoreLayout
+          && state.repositories.snapshotPersistencePhase == .active
+        appLogger.info(
+          "[LayoutRestore] repositoriesChanged: mode=\(String(describing: state.launchRestoreMode))"
+            + " phase=\(String(describing: state.repositories.snapshotPersistencePhase))"
+            + " → shouldRestore=\(shouldRestoreLayout)"
+        )
+        if shouldRestoreLayout {
+          state.launchRestoreMode = .lastFocusedWorktree
+          state.repositories.selection = nil
+        }
         state.runScriptStatusByWorktreeID = state.runScriptStatusByWorktreeID.filter { ids.contains($0.key) }
+        let restorableWorktrees = makeTerminalRestorableWorktrees(from: Array(repositories))
+        appLogger.info("[LayoutRestore] restorableWorktrees count=\(restorableWorktrees.count)")
         if case .repository(let repositoryID)? = state.settings.selection,
           !repositories.contains(where: { $0.id == repositoryID })
         {
-          return .merge(
+          var effects: [Effect<Action>] = [
             .send(.settings(.setSelection(.general))),
             .send(.commandPalette(.pruneRecency(recencyIDs))),
             .run { _ in
@@ -234,18 +326,34 @@ struct AppFeature {
             },
             .run { _ in
               await worktreeInfoWatcher.send(.setWorktrees(worktrees))
-            }
-          )
+            },
+          ]
+          if shouldRestoreLayout {
+            effects.append(
+              .run { _ in
+                await terminalClient.send(.restoreLayoutSnapshot(worktrees: restorableWorktrees))
+              }
+            )
+          }
+          return .merge(effects)
         }
-        return .merge(
+        var effects: [Effect<Action>] = [
           .send(.commandPalette(.pruneRecency(recencyIDs))),
           .run { _ in
             await terminalClient.send(.prune(ids))
           },
           .run { _ in
             await worktreeInfoWatcher.send(.setWorktrees(worktrees))
-          }
-        )
+          },
+        ]
+        if shouldRestoreLayout {
+          effects.append(
+            .run { _ in
+              await terminalClient.send(.restoreLayoutSnapshot(worktrees: restorableWorktrees))
+            }
+          )
+        }
+        return .merge(effects)
 
       case .repositories(.delegate(.openRepositorySettings(let repositoryID))):
         guard state.repositories.repositories.contains(where: { $0.id == repositoryID }) else {
@@ -275,7 +383,7 @@ struct AppFeature {
             settings: repositorySettings,
             userSettings: userRepositorySettings
           )
-        case .general, .notifications, .worktree, .updates, .advanced, .github:
+        case .general, .notifications, .shortcuts, .worktree, .updates, .advanced, .github:
           state.settings.repositorySettings = nil
         }
         return .none
@@ -284,6 +392,7 @@ struct AppFeature {
         let shouldCheckSystemNotificationPermission =
           settings.systemNotificationsEnabled && !state.lastKnownSystemNotificationsEnabled
         state.lastKnownSystemNotificationsEnabled = settings.systemNotificationsEnabled
+        state.settings.keybindingUserOverrides = settings.keybindingUserOverrides
         if let selectedWorktree = state.repositories.selectedTerminalWorktree {
           let rootURL = selectedWorktree.repositoryRootURL
           @Shared(.repositorySettings(rootURL)) var repositorySettings
@@ -292,6 +401,10 @@ struct AppFeature {
             defaultEditorID: settings.defaultEditorID
           )
         }
+        state.resolvedKeybindings = resolvedKeybindings(
+          settings: state.settings,
+          customCommands: state.selectedCustomCommands
+        )
         return .merge(
           .send(.repositories(.setGithubIntegrationEnabled(settings.githubIntegrationEnabled))),
           .send(
@@ -354,6 +467,20 @@ struct AppFeature {
 
       case .settings(.delegate(.terminalFontSizeChanged)):
         return .none
+
+      case .settings(.delegate(.terminalLayoutSnapshotCleared(let success))):
+        if success {
+          state.suppressLayoutSaveUntilRelaunch = true
+          return .send(.repositories(.showToast(.success("Saved terminal layout cleared"))))
+        }
+        return .send(
+          .repositories(
+            .presentAlert(
+              title: "Unable to clear saved terminal layout",
+              message: "Please check file permissions and try again."
+            )
+          )
+        )
 
       case .openActionSelectionChanged(let action):
         state.openActionSelection = action
@@ -622,11 +749,14 @@ struct AppFeature {
           return .none
         }
         state.selectedCustomCommands = UserRepositorySettings.normalizedCommands(settings.customCommands)
-          .filter(\.hasRunnableCommand)
+        state.resolvedKeybindings = resolvedKeybindings(
+          settings: state.settings,
+          customCommands: state.selectedCustomCommands
+        )
         let userOverrideConflicts = AppShortcuts.userOverrideConflicts(in: state.selectedCustomCommands)
         let shortcuts: [UserCustomShortcut] = state.selectedCustomCommands.compactMap { command in
-          guard let shortcut = command.shortcut, shortcut.isValid else { return nil }
-          return shortcut.normalized()
+          let commandID = LegacyCustomCommandShortcutMigration.customCommandBindingID(for: command.id)
+          return state.resolvedKeybindings.keybinding(for: commandID)?.userCustomShortcut
         }
         return .run { _ in
           let logger = SupaLogger("Shortcuts")
@@ -796,6 +926,19 @@ struct AppFeature {
 
       case .terminalEvent(.fontSizeChanged(let fontSize)):
         return .send(.settings(.setTerminalFontSize(fontSize)))
+
+      case .terminalEvent(.layoutRestored(let selectedWorktreeID)):
+        appLogger.info("[LayoutRestore] layoutRestored: selectedWorktreeID=\(selectedWorktreeID ?? "nil")")
+        if let selectedWorktreeID {
+          // Plain folders use .repository selection, not .worktree
+          if let repo = state.repositories.repositories[id: selectedWorktreeID],
+            repo.kind == .plain
+          {
+            return .send(.repositories(.selectRepository(selectedWorktreeID)))
+          }
+          return .send(.repositories(.selectWorktree(selectedWorktreeID)))
+        }
+        return .none
 
       case .terminalEvent:
         return .none

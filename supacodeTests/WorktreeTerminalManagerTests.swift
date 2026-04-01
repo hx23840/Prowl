@@ -1,3 +1,5 @@
+import ConcurrencyExtras
+import DependenciesTestSupport
 import Foundation
 import Testing
 
@@ -44,121 +46,24 @@ struct WorktreeTerminalManagerTests {
     #expect(event == .setupScriptConsumed(worktreeID: worktree.id))
   }
 
-  @Test func fontSizeResetToBaselineEmitsNilOverride() async {
-    let runtime = GhosttyRuntime()
-    let baseline = runtime.defaultFontSize()
-    let manager = WorktreeTerminalManager(runtime: runtime, preferredFontSize: baseline + 1)
-    let worktree = makeWorktree()
-    let state = manager.state(for: worktree)
+  @Test func syncPreferredFontSizeNoOpForMissingState() async {
+    let manager = WorktreeTerminalManager(runtime: GhosttyRuntime())
     let stream = manager.eventStream()
     var iterator = stream.makeAsyncIterator()
 
-    state.onFontSizeChanged?(baseline)
+    manager.syncPreferredFontSize(from: "/nonexistent")
 
-    var event: TerminalClient.Event?
-    while let next = await iterator.next() {
-      if case .fontSizeChanged = next {
-        event = next
-        break
-      }
-    }
-
-    #expect(event == .fontSizeChanged(nil))
-  }
-
-  @Test func duplicateFontSizeChangeIsDeduplicated() async {
-    let runtime = GhosttyRuntime()
-    let baseline = runtime.defaultFontSize()
-    let firstSize = baseline + 2
-    let secondSize = baseline + 3
-    let manager = WorktreeTerminalManager(runtime: runtime)
-    let worktree = makeWorktree()
-    let state = manager.state(for: worktree)
-    let stream = manager.eventStream()
-    var iterator = stream.makeAsyncIterator()
-
-    state.onFontSizeChanged?(firstSize)
-    state.onFontSizeChanged?(firstSize)
-    state.onFontSizeChanged?(secondSize)
-
-    var fontSizeEvents: [TerminalClient.Event] = []
-    while let next = await iterator.next() {
-      if case .fontSizeChanged = next {
-        fontSizeEvents.append(next)
-      }
-      if fontSizeEvents.count == 2 {
-        break
-      }
-    }
-
-    #expect(fontSizeEvents == [.fontSizeChanged(firstSize), .fontSizeChanged(secondSize)])
-  }
-
-  @Test func explicitResetAcrossStatesEmitsNilOverride() async {
-    let runtime = GhosttyRuntime()
-    let baseline = runtime.defaultFontSize()
-    let manager = WorktreeTerminalManager(runtime: runtime, preferredFontSize: baseline + 2)
-    let worktreeA = Worktree(
-      id: "/tmp/repo-a/wt-a",
-      name: "wt-a",
-      detail: "detail",
-      workingDirectory: URL(fileURLWithPath: "/tmp/repo-a/wt-a"),
-      repositoryRootURL: URL(fileURLWithPath: "/tmp/repo-a")
-    )
-    let worktreeB = Worktree(
-      id: "/tmp/repo-b/wt-b",
-      name: "wt-b",
-      detail: "detail",
-      workingDirectory: URL(fileURLWithPath: "/tmp/repo-b/wt-b"),
-      repositoryRootURL: URL(fileURLWithPath: "/tmp/repo-b")
-    )
-    _ = manager.state(for: worktreeA)
-    _ = manager.state(for: worktreeB)
-
-    let stream = manager.eventStream()
-    var iterator = stream.makeAsyncIterator()
-
-    manager.resetFontSizeAcrossStates()
-
-    var event: TerminalClient.Event?
-    while let next = await iterator.next() {
-      if case .fontSizeChanged = next {
-        event = next
-        break
-      }
-    }
-
-    #expect(event == .fontSizeChanged(nil))
-  }
-
-  @Test func explicitResetWhenAlreadyDefaultDoesNotEmitEvent() async {
-    let manager = WorktreeTerminalManager(runtime: GhosttyRuntime(), preferredFontSize: nil)
-    _ = manager.state(for: makeWorktree())
-    let stream = manager.eventStream()
-    var iterator = stream.makeAsyncIterator()
-
-    manager.resetFontSizeAcrossStates()
-
+    // Should not emit font event; only the notification indicator event
     let first = await iterator.next()
     #expect(first == .notificationIndicatorChanged(count: 0))
   }
 
-  @Test func cellSizeChangeSkipsFirstEventPerSurface() {
-    let state = WorktreeTerminalState(runtime: GhosttyRuntime(), worktree: makeWorktree())
-    var captured: [Float32?] = []
-    let firstSurface = UUID()
-    let secondSurface = UUID()
+  @Test func onFontSizeAdjustedCallbackIsWired() {
+    let manager = WorktreeTerminalManager(runtime: GhosttyRuntime())
+    let worktree = makeWorktree()
+    let state = manager.state(for: worktree)
 
-    state.onFontSizeChanged = { fontSize in
-      captured.append(fontSize)
-    }
-
-    state.handleCellSizeChange(forSurfaceID: firstSurface, fontSize: 13)
-    state.handleCellSizeChange(forSurfaceID: firstSurface, fontSize: 14)
-    state.handleCellSizeChange(forSurfaceID: secondSurface, fontSize: 15)
-    state.handleCellSizeChange(forSurfaceID: secondSurface, fontSize: 16)
-
-    #expect(captured == [14, 16])
+    #expect(state.onFontSizeAdjusted != nil)
   }
 
   @Test func notificationIndicatorUsesCurrentCountOnStreamStart() async {
@@ -319,6 +224,63 @@ struct WorktreeTerminalManagerTests {
     #expect(manager.hasUnseenNotifications(for: worktree.id) == false)
   }
 
+  @Test func restoreLayoutSnapshotFailClosedClearsSnapshotWhenWorktreeMissing() async {
+    let clearCount = LockIsolated(0)
+    let snapshot = TerminalLayoutSnapshotPayload(
+      worktrees: [
+        TerminalLayoutSnapshotPayload.SnapshotWorktree(
+          worktreeID: "/tmp/repo/wt-1",
+          selectedTabID: "F96839F5-1371-4841-9E41-49124D918A67",
+          tabs: [
+            TerminalLayoutSnapshotPayload.SnapshotTab(
+              tabID: "F96839F5-1371-4841-9E41-49124D918A67",
+              splitRoot: .leaf(surfaceID: "9B2F6D8C-44A4-42C5-8F9E-962108301901")
+            ),
+          ]
+        ),
+      ]
+    )
+    let manager = WorktreeTerminalManager(
+      runtime: GhosttyRuntime(),
+      layoutPersistence: TerminalLayoutPersistenceClient(
+        loadSnapshot: { snapshot },
+        saveSnapshot: { _ in true },
+        clearSnapshot: {
+          clearCount.withValue { $0 += 1 }
+          return true
+        }
+      )
+    )
+
+    await manager.restoreLayoutSnapshot(from: [])
+
+    #expect(clearCount.value == 1)
+  }
+
+  @Test func persistLayoutSnapshotWithoutTabsClearsSnapshot() async {
+    let clearCount = LockIsolated(0)
+    let saveCount = LockIsolated(0)
+    let manager = WorktreeTerminalManager(
+      runtime: GhosttyRuntime(),
+      layoutPersistence: TerminalLayoutPersistenceClient(
+        loadSnapshot: { nil },
+        saveSnapshot: { _ in
+          saveCount.withValue { $0 += 1 }
+          return true
+        },
+        clearSnapshot: {
+          clearCount.withValue { $0 += 1 }
+          return true
+        }
+      )
+    )
+
+    await manager.persistLayoutSnapshot()
+
+    #expect(saveCount.value == 0)
+    #expect(clearCount.value == 1)
+  }
+
   private func makeWorktree() -> Worktree {
     Worktree(
       id: "/tmp/repo/wt-1",
@@ -350,4 +312,5 @@ struct WorktreeTerminalManagerTests {
       isRead: isRead
     )
   }
+
 }

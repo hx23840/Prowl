@@ -74,6 +74,10 @@ struct SplitTree<ViewType: NSView & Identifiable> {
     if case .split = root { true } else { false }
   }
 
+  var visibleNode: Node? {
+    zoomed ?? root
+  }
+
   init() {
     self.init(root: nil, zoomed: nil)
   }
@@ -267,6 +271,10 @@ struct SplitTree<ViewType: NSView & Identifiable> {
     root?.leaves() ?? []
   }
 
+  func visibleLeaves() -> [ViewType] {
+    visibleNode?.leaves() ?? []
+  }
+
   var structuralIdentity: StructuralIdentity {
     StructuralIdentity(self)
   }
@@ -311,6 +319,10 @@ struct SplitTree<ViewType: NSView & Identifiable> {
   private init(root: Node?, zoomed: Node?) {
     self.root = root
     self.zoomed = zoomed
+  }
+
+  static func restored(root: Node) -> SplitTree {
+    SplitTree(root: root, zoomed: nil)
   }
 }
 

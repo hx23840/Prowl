@@ -34,6 +34,26 @@ final class GhosttySurfaceView: NSView, Identifiable {
     let length: UInt64
   }
 
+  struct KeyboardLayoutChangeKeyUpSuppression: Equatable {
+    static let lifetime: TimeInterval = 1
+
+    let keyCode: UInt16
+    let expiresAt: TimeInterval
+
+    init(keyCode: UInt16, timestamp: TimeInterval) {
+      self.keyCode = keyCode
+      expiresAt = timestamp + Self.lifetime
+    }
+
+    func suppresses(keyCode: UInt16, timestamp: TimeInterval) -> Bool {
+      timestamp <= expiresAt && self.keyCode == keyCode
+    }
+
+    func isExpired(at timestamp: TimeInterval) -> Bool {
+      timestamp > expiresAt
+    }
+  }
+
   private final class CachedValue<T> {
     private var value: T?
     private let fetch: () -> T
@@ -83,6 +103,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
   private var currentCursor: NSCursor = .iBeam
   private var focused = false
   private var markedText = NSMutableAttributedString()
+  private var keyboardLayoutChangeKeyUpSuppression: KeyboardLayoutChangeKeyUpSuppression?
   private var keyTextAccumulator: [String]?
   private var cellSize: CGSize = .zero
   private var lastScrollbar: ScrollbarState?
@@ -122,7 +143,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
   var onKeyInput: (() -> Void)?
   var onCommittedText: ((String) -> Void)?
   var onMirroredKey: ((MirroredTerminalKey) -> Void)?
-  var onResetFontSizeShortcut: (() -> Void)?
+  var onFontSizeShortcut: (() -> Void)?
 
   private var accessibilityPaneIndexHelp: String?
 
@@ -340,6 +361,11 @@ final class GhosttySurfaceView: NSView, Identifiable {
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
+    if window == nil {
+      // SwiftUI can temporarily detach a pane while rebuilding split/zoom layout.
+      // If we keep the stale local focus bit, detached panes still intercept bindings.
+      focusDidChange(false)
+    }
     updateScreenObservers()
     updateContentScale()
     updateSurfaceSize()
@@ -578,6 +604,10 @@ final class GhosttySurfaceView: NSView, Identifiable {
     lastPerformKeyEvent = nil
     interpretKeyEvents([translationEvent])
     if !markedTextBefore, keyboardIdBefore != keyboardLayoutId() {
+      keyboardLayoutChangeKeyUpSuppression = KeyboardLayoutChangeKeyUpSuppression(
+        keyCode: event.keyCode,
+        timestamp: event.timestamp
+      )
       return
     }
     syncPreedit(clearIfNeeded: markedTextBefore)
@@ -605,6 +635,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
   }
 
   override func keyUp(with event: NSEvent) {
+    if suppressKeyboardLayoutChangeKeyUp(event) { return }
     sendKey(action: GHOSTTY_ACTION_RELEASE, event: event)
   }
 
@@ -983,7 +1014,7 @@ final class GhosttySurfaceView: NSView, Identifiable {
 
   override func performKeyEquivalent(with event: NSEvent) -> Bool {
     guard event.type == .keyDown else { return false }
-    let isResetFontSizeShortcut = matchesBindingShortcut(event: event, action: "reset_font_size")
+    let isFontSizeShortcut = matchesFontSizeShortcut(event: event)
     guard let surface else { return false }
     guard focused else { return false }
 
@@ -1002,8 +1033,8 @@ final class GhosttySurfaceView: NSView, Identifiable {
         return true
       }
       keyDown(with: event)
-      if isResetFontSizeShortcut {
-        onResetFontSizeShortcut?()
+      if isFontSizeShortcut {
+        onFontSizeShortcut?()
       }
       // Ghostty handled paste internally; broadcast the pasted text to followers.
       if onCommittedText != nil,
@@ -1036,10 +1067,16 @@ final class GhosttySurfaceView: NSView, Identifiable {
       return false
     }
     keyDown(with: finalEvent)
-    if isResetFontSizeShortcut {
-      onResetFontSizeShortcut?()
+    if isFontSizeShortcut {
+      onFontSizeShortcut?()
     }
     return true
+  }
+
+  private func matchesFontSizeShortcut(event: NSEvent) -> Bool {
+    matchesBindingShortcut(event: event, action: "reset_font_size")
+      || matchesBindingShortcut(event: event, action: "increase_font_size:1")
+      || matchesBindingShortcut(event: event, action: "decrease_font_size:1")
   }
 
   private func matchesBindingShortcut(event: NSEvent, action: String) -> Bool {
@@ -1352,6 +1389,19 @@ final class GhosttySurfaceView: NSView, Identifiable {
       }
     }
     return keyEvent
+  }
+
+  private func suppressKeyboardLayoutChangeKeyUp(_ event: NSEvent) -> Bool {
+    guard let suppression = keyboardLayoutChangeKeyUpSuppression else { return false }
+    if suppression.isExpired(at: event.timestamp) {
+      keyboardLayoutChangeKeyUpSuppression = nil
+      return false
+    }
+    if suppression.suppresses(keyCode: event.keyCode, timestamp: event.timestamp) {
+      keyboardLayoutChangeKeyUpSuppression = nil
+      return true
+    }
+    return false
   }
 
   private func ghosttyCharacters(_ event: NSEvent) -> String? {

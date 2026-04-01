@@ -18,7 +18,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
   var automaticallyArchiveMergedWorktrees: Bool
   var promptForWorktreeCreation: Bool
   var defaultWorktreeBaseDirectoryPath: String?
+  var restoreTerminalLayoutOnLaunch: Bool
   var terminalFontSize: Float32?
+  var keybindingUserOverrides: KeybindingUserOverrideStore
 
   static let `default` = GlobalSettings(
     appearanceMode: .dark,
@@ -40,7 +42,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     automaticallyArchiveMergedWorktrees: false,
     promptForWorktreeCreation: true,
     defaultWorktreeBaseDirectoryPath: nil,
-    terminalFontSize: nil
+    restoreTerminalLayoutOnLaunch: false,
+    terminalFontSize: nil,
+    keybindingUserOverrides: .empty
   )
 
   init(
@@ -63,7 +67,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     automaticallyArchiveMergedWorktrees: Bool,
     promptForWorktreeCreation: Bool,
     defaultWorktreeBaseDirectoryPath: String? = nil,
-    terminalFontSize: Float32? = nil
+    restoreTerminalLayoutOnLaunch: Bool = false,
+    terminalFontSize: Float32? = nil,
+    keybindingUserOverrides: KeybindingUserOverrideStore = .empty
   ) {
     self.appearanceMode = appearanceMode
     self.defaultEditorID = defaultEditorID
@@ -84,7 +90,9 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     self.automaticallyArchiveMergedWorktrees = automaticallyArchiveMergedWorktrees
     self.promptForWorktreeCreation = promptForWorktreeCreation
     self.defaultWorktreeBaseDirectoryPath = defaultWorktreeBaseDirectoryPath
+    self.restoreTerminalLayoutOnLaunch = restoreTerminalLayoutOnLaunch
     self.terminalFontSize = terminalFontSize
+    self.keybindingUserOverrides = keybindingUserOverrides
   }
 
   init(from decoder: any Decoder) throws {
@@ -140,8 +148,14 @@ nonisolated struct GlobalSettings: Codable, Equatable, Sendable {
     defaultWorktreeBaseDirectoryPath =
       try container.decodeIfPresent(String.self, forKey: .defaultWorktreeBaseDirectoryPath)
       ?? Self.default.defaultWorktreeBaseDirectoryPath
+    restoreTerminalLayoutOnLaunch =
+      try container.decodeIfPresent(Bool.self, forKey: .restoreTerminalLayoutOnLaunch)
+      ?? Self.default.restoreTerminalLayoutOnLaunch
     terminalFontSize =
       try container.decodeIfPresent(Float32.self, forKey: .terminalFontSize)
       ?? Self.default.terminalFontSize
+    keybindingUserOverrides =
+      try container.decodeIfPresent(KeybindingUserOverrideStore.self, forKey: .keybindingUserOverrides)
+      ?? Self.default.keybindingUserOverrides
   }
 }
