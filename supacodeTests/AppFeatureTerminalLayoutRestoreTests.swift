@@ -147,6 +147,23 @@ struct AppFeatureTerminalLayoutRestoreTests {
 
     #expect(sentCommands.value == [.saveLayoutSnapshot])
   }
+
+  @Test(.dependencies) func scenePhaseInactiveSkipsSaveWhenRestoreDisabled() async {
+    let sentCommands = LockIsolated<[TerminalClient.Command]>([])
+    let store = TestStore(initialState: AppFeature.State()) {
+      AppFeature()
+    } withDependencies: {
+      $0.terminalClient.send = { command in
+        sentCommands.withValue { $0.append(command) }
+      }
+    }
+    store.exhaustivity = .off
+
+    await store.send(.scenePhaseChanged(.inactive))
+    await store.finish()
+
+    #expect(!sentCommands.value.contains(.saveLayoutSnapshot))
+  }
 }
 
 private func makeWorktree() -> Worktree {
