@@ -671,7 +671,7 @@ final class WorktreeTerminalState {
 
     // Now create new surfaces into the clean state.
     var restoredTabs: [TerminalTabItem] = []
-    var restoredTrees: [TerminalTabID: SplitTree<GhosttySurfaceView>] = [:]
+    var restoredTrees: [TerminalTabID: SplitTree<SurfaceView>] = [:]
     var restoredFocusedSurfaceIDs: [TerminalTabID: UUID] = [:]
 
     for (index, entry) in validatedTabs.enumerated() {
@@ -685,7 +685,7 @@ final class WorktreeTerminalState {
         closeAllSurfaces()
         return false
       }
-      let tree = SplitTree<GhosttySurfaceView>.restored(root: rootNode)
+      let tree = SplitTree<SurfaceView>.restored(root: rootNode)
       restoredTrees[entry.tabID] = tree
       restoredFocusedSurfaceIDs[entry.tabID] = rootNode.leftmostLeaf().id
       restoredTabs.append(
@@ -706,7 +706,7 @@ final class WorktreeTerminalState {
 
     // Explicitly unfocus all restored surfaces so only the focused one blinks.
     for surface in surfaces.values {
-      surface.focusDidChange(false)
+      surface.terminalView?.focusDidChange(false)
     }
     if let selectedTabID {
       focusSurface(in: selectedTabID)
@@ -1214,7 +1214,7 @@ final class WorktreeTerminalState {
   static let recentInteractionWindow: Duration = .seconds(3)
 
   private func makeLayoutSnapshotNode(
-    from node: SplitTree<GhosttySurfaceView>.Node
+    from node: SplitTree<SurfaceView>.Node
   ) -> TerminalLayoutSnapshotPayload.SnapshotSplitNode? {
     switch node {
     case .leaf(let view):
@@ -1242,7 +1242,7 @@ final class WorktreeTerminalState {
     from snapshotNode: TerminalLayoutSnapshotPayload.SnapshotSplitNode,
     tabID: TerminalTabID,
     isRoot: Bool
-  ) -> SplitTree<GhosttySurfaceView>.Node? {
+  ) -> SplitTree<SurfaceView>.Node? {
     switch snapshotNode.kind {
     case .leaf:
       guard let surfaceID = snapshotNode.surfaceID,
@@ -1291,7 +1291,7 @@ final class WorktreeTerminalState {
   }
 
   private func snapshotSplitDirection(
-    from direction: SplitTree<GhosttySurfaceView>.Direction
+    from direction: SplitTree<SurfaceView>.Direction
   ) -> TerminalLayoutSnapshotSplitDirection {
     switch direction {
     case .horizontal:
@@ -1303,7 +1303,7 @@ final class WorktreeTerminalState {
 
   private func splitDirection(
     from direction: TerminalLayoutSnapshotSplitDirection
-  ) -> SplitTree<GhosttySurfaceView>.Direction {
+  ) -> SplitTree<SurfaceView>.Direction {
     switch direction {
     case .horizontal:
       .horizontal
@@ -1414,7 +1414,7 @@ final class WorktreeTerminalState {
     applySurfaceActivity()
   }
 
-  private func updateTree(_ tree: SplitTree<GhosttySurfaceView>, for tabId: TerminalTabID) {
+  private func updateTree(_ tree: SplitTree<SurfaceView>, for tabId: TerminalTabID) {
     trees[tabId] = tree
     syncFocusIfNeeded()
   }
